@@ -12,6 +12,8 @@ int S1_GREEN_LED_DELAY = 0;
 int S1_AMBER_LED_DELAY = 0;
 int S1_RED_LED_DELAY = 0;
 
+unsigned int S1CycleStartTime = 0;
+
 void setup() {
   pinMode(S1_GREEN_LED, OUTPUT);
   pinMode(S1_AMBER_LED, OUTPUT);
@@ -54,6 +56,15 @@ void turnOffLEDRoutine(unsigned long now) {
       digitalWrite(S1_RED_LED, LOW);
     }
   }
+}
+
+void startLEDCycle() {
+  S1CycleStart = millis();
+  ledDigitalWrite(S1_RED_LED, 2000);
+}
+
+void updateLEDCycle() {
+  
 }
 
 void loop() {
