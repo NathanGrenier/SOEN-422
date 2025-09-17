@@ -37,4 +37,6 @@ void loop()
     digitalWrite(S2_GREEN_LED, LOW);
     digitalWrite(S2_AMBER_LED, LOW);
     digitalWrite(S2_RED_LED, LOW);
+
+    delay(1000);
 }
