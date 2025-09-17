@@ -98,6 +98,10 @@ void loop()
       digitalWrite(current->pin, LOW);
       ledOn = false;
 
+      if (current->pin == S1_GREEN_LED) {
+        delay(500);
+      }
+      
       // After the current LED has been turned OFF, move to next node w.r.t. the current direction
       current = forward ? current->next : current->prev;
     }
