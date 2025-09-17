@@ -6,15 +6,20 @@
  */
 
 // Global constants for Arduino Nano I/O Pin Configuration
-const int S1_GREEN_LED = 2;
-const int S1_AMBER_LED = 3;
-const int S1_RED_LED = 4;
+const unsigned char S1_GREEN_LED = 2;
+const unsigned char S1_AMBER_LED = 3;
+const unsigned char S1_RED_LED = 4;
 
-const int S2_GREEN_LED = 5;
-const int S2_AMBER_LED = 6;
-const int S2_RED_LED = 7;
+const unsigned char S2_GREEN_LED = 5;
+const unsigned char S2_AMBER_LED = 6;
+const unsigned char S2_RED_LED = 7;
 
-const int WALKWAY_BTN = 10;
+const unsigned char WALKWAY_BTN = 10;
+
+// Define LED Color Duration Constants (in milliseconds)
+const unsigned int RED_DURATION = 5000;
+const unsigned int AMBER_DURATION = 1000;
+const unsigned int GREEN_DURATION = 4000;
 
 /**
  * Represents a LED node in the doubly linked list.
@@ -26,8 +31,8 @@ const int WALKWAY_BTN = 10;
  */
 struct LEDNode
 {
-    int pin;
-    int duration;
+    unsigned char pin;
+    unsigned int duration;
     LEDNode *next;
     LEDNode *prev;
 };
@@ -71,13 +76,13 @@ void setup()
     pinMode(WALKWAY_BTN, INPUT);
 
     // Create LED nodes for TrafficLights
-    S1Red = {S1_RED_LED, 5000, &S1Green, &S1Amber};
-    S1Amber = {S1_AMBER_LED, 1000, &S1Red, &S1Green};
-    S1Green = {S1_GREEN_LED, 4000, &S1Amber, &S1Red};
+    S1Red = {S1_RED_LED, RED_DURATION, &S1Green, &S1Amber};
+    S1Amber = {S1_AMBER_LED, AMBER_DURATION, &S1Red, &S1Green};
+    S1Green = {S1_GREEN_LED, GREEN_DURATION, &S1Amber, &S1Red};
 
-    S2Red = {S2_RED_LED, 5000, &S2Green, &S2Amber};
-    S2Amber = {S2_AMBER_LED, 1000, &S2Red, &S2Green};
-    S2Green = {S2_GREEN_LED, 4000, &S2Amber, &S2Red};
+    S2Red = {S2_RED_LED, RED_DURATION, &S2Green, &S2Amber};
+    S2Amber = {S2_AMBER_LED, AMBER_DURATION, &S2Red, &S2Green};
+    S2Green = {S2_GREEN_LED, GREEN_DURATION, &S2Amber, &S2Red};
 
     // S1 Traffic Light Starts on Red
     S1TrafficLight = {&S1Red, 0};
@@ -113,21 +118,43 @@ void updateTrafficLight(TrafficLight &trafficLight, unsigned long now)
     }
 }
 
-void updateButtonState()
+bool detectButtonPress()
 {
+    bool buttonState = digitalRead(WALKWAY_BTN);
+    if (buttonState == HIGH && lastButtonState == LOW)
+    {
+        lastButtonState = buttonState;
+        return true;
+    }
+    lastButtonState = buttonState;
+    return false;
 }
 
 void loop()
 {
     unsigned long now = millis();
 
-    // Upon successfull detection of a valid button press, the LED cycle gets toggled
-    bool buttonState = digitalRead(WALKWAY_BTN);
-    if (buttonState == HIGH && lastButtonState == LOW)
+    if (detectButtonPress())
     {
-        forward = !forward;
+        // If the button is pressed while S1 is Green, S1 immediately switches to Amber.
+        // S2 immediately switches to Red with a remaining duration equal to the AMBER_DURATION.
+        if (S1TrafficLight.currentLED == &S1Green)
+        {
+            // Turn off current LEDs
+            digitalWrite(S1TrafficLight.currentLED->pin, LOW);
+            digitalWrite(S2TrafficLight.currentLED->pin, LOW);
+
+            // Switch S1 to Amber
+            S1TrafficLight.currentLED = &S1Amber;
+            digitalWrite(S1TrafficLight.currentLED->pin, HIGH);
+            S1TrafficLight.currentLEDStartTime = now;
+
+            // Switch S2 to Red - Amber LED duration
+            S2TrafficLight.currentLED = &S2Red;
+            digitalWrite(S2TrafficLight.currentLED->pin, HIGH);
+            S2TrafficLight.currentLEDStartTime = now - (RED_DURATION - AMBER_DURATION);
+        }
     }
-    lastButtonState = buttonState;
 
     updateTrafficLight(S1TrafficLight, now);
     updateTrafficLight(S2TrafficLight, now);
