@@ -6,13 +6,13 @@
  */
 
 // Global constants for Arduino Nano I/O Pin Configuration
-const int S1_GREEN_LED = 2;
-const int S1_AMBER_LED = 3;
-const int S1_RED_LED = 4;
+const unsigned char S1_GREEN_LED = 2;
+const unsigned char S1_AMBER_LED = 3;
+const unsigned char S1_RED_LED = 4;
 
-const int S2_GREEN_LED = 5;
-const int S2_AMBER_LED = 6;
-const int S2_RED_LED = 7;
+const unsigned char S2_GREEN_LED = 5;
+const unsigned char S2_AMBER_LED = 6;
+const unsigned char S2_RED_LED = 7;
 
 /**
  * Represents a LED node in the doubly linked list.
@@ -24,8 +24,8 @@ const int S2_RED_LED = 7;
  */
 struct LEDNode
 {
-  int pin;
-  int duration;
+  unsigned char pin;
+  unsigned int duration;
   LEDNode *next;
   LEDNode *prev;
 };
