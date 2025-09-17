@@ -14,7 +14,8 @@ const unsigned char S2_GREEN_LED = 5;
 const unsigned char S2_AMBER_LED = 6;
 const unsigned char S2_RED_LED = 7;
 
-const unsigned char WALKWAY_BTN = 10;
+const unsigned char S1_CROSSWALK_BTN_PIN = 10;
+const unsigned char S2_CROSSWALK_BTN_PIN = 11;
 
 // Define LED Color Duration Constants (in milliseconds)
 const unsigned int RED_DURATION = 5000;
@@ -55,8 +56,13 @@ LEDNode S2Red, S2Amber, S2Green;
 TrafficLight S1TrafficLight;
 TrafficLight S2TrafficLight;
 
-// For comparing detection updates, a boolean variable makes it possible to keep track of the previous button state:
-bool lastButtonState = LOW;
+struct CrosswalkButton {
+  unsigned char pin;
+  bool lastButtonState;
+};
+
+CrosswalkButton S1CrosswalkButton;
+CrosswalkButton S2CrosswalkButton;
 
 /**
  * Arduino setup function.
@@ -73,8 +79,13 @@ void setup()
     pinMode(S2_AMBER_LED, OUTPUT);
     pinMode(S2_RED_LED, OUTPUT);
 
-    pinMode(WALKWAY_BTN, INPUT);
+    pinMode(S1_CROSSWALK_BTN_PIN, INPUT);
+    pinMode(S2_CROSSWALK_BTN_PIN, INPUT);
 
+    // Initialize the CrosswalkButtons
+    S1CrosswalkButton = {S1_CROSSWALK_BTN_PIN, LOW};
+    S2CrosswalkButton = {S2_CROSSWALK_BTN_PIN, LOW};
+    
     // Create LED nodes for TrafficLights
     S1Red = {S1_RED_LED, RED_DURATION, &S1Green, &S1Amber};
     S1Amber = {S1_AMBER_LED, AMBER_DURATION, &S1Red, &S1Green};
@@ -118,15 +129,15 @@ void updateTrafficLight(TrafficLight &trafficLight, unsigned long now)
     }
 }
 
-bool detectButtonPress()
+bool detectButtonPress(CrosswalkButton &crosswalkButton)
 {
-    bool buttonState = digitalRead(WALKWAY_BTN);
-    if (buttonState == HIGH && lastButtonState == LOW)
+    bool buttonState = digitalRead(crosswalkButton.pin);
+    if (buttonState == HIGH && crosswalkButton.lastButtonState == LOW)
     {
-        lastButtonState = buttonState;
+        crosswalkButton.lastButtonState = buttonState;
         return true;
     }
-    lastButtonState = buttonState;
+    crosswalkButton.lastButtonState = buttonState;
     return false;
 }
 
@@ -134,7 +145,7 @@ void loop()
 {
     unsigned long now = millis();
 
-    if (detectButtonPress())
+    if (detectButtonPress(S1CrosswalkButton))
     {
         // If the button is pressed while S1 is Green, S1 immediately switches to Amber.
         // S2 immediately switches to Red with a remaining duration equal to the AMBER_DURATION.
@@ -153,6 +164,25 @@ void loop()
             S2TrafficLight.currentLED = &S2Red;
             digitalWrite(S2TrafficLight.currentLED->pin, HIGH);
             S2TrafficLight.currentLEDStartTime = now - (RED_DURATION - AMBER_DURATION);
+        }
+    }
+
+    if (detectButtonPress(S2CrosswalkButton)) {
+        if (S2TrafficLight.currentLED == &S2Green)
+        {
+            // Turn off current LEDs
+            digitalWrite(S1TrafficLight.currentLED->pin, LOW);
+            digitalWrite(S2TrafficLight.currentLED->pin, LOW);
+
+            // Switch S2 to Amber
+            S2TrafficLight.currentLED = &S2Amber;
+            digitalWrite(S2TrafficLight.currentLED->pin, HIGH);
+            S2TrafficLight.currentLEDStartTime = now;
+
+            // Switch S1 to Red - Amber LED duration
+            S1TrafficLight.currentLED = &S1Red;
+            digitalWrite(S1TrafficLight.currentLED->pin, HIGH);
+            S1TrafficLight.currentLEDStartTime = now - (RED_DURATION - AMBER_DURATION);
         }
     }
 
