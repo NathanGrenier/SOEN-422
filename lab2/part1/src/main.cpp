@@ -25,18 +25,56 @@ const unsigned char BUZZER_PIN = 21;
 
 BluetoothSerial SerialBT;
 
-#define BT_DISCOVER_TIME 10000
+bool BTDeviceConnected = false;
+bool isScanning;
 
-static bool btScanAsync = true;
-static bool btScanSync = true;
+String currentBTAddress;
+
+bool postUserSongPreference(unsigned int studentId, const String &bluetoothAddress, const String &songName);
 
 void btAdvertisedDeviceFound(BTAdvertisedDevice *pDevice)
 {
   Serial.printf("Found a device asynchronously: %s\n", pDevice->toString().c_str());
+  String deviceName = String(pDevice->getName().c_str());
+
+  SerialBT.discoverAsyncStop();
+  isScanning = false;
+
+  Serial.println("Trying to connect...");
+  if (SerialBT.connect(pDevice->getAddress()))
+  {
+    Serial.println("Connected to device: " + deviceName);
+    currentBTAddress = pDevice->getAddress().toString();
+    BTDeviceConnected = true;
+  }
+  else
+  {
+    Serial.println("Failed to connect to device: " + deviceName);
+    BTDeviceConnected = false;
+  }
 }
 
 void setSongPreferenceOnStartup()
 {
+  const String btAddressPhone = "00:2B:70:AA:3E:92";
+  const String btAddressLaptop = "E0:0A:F6:B8:D5:76";
+
+  postUserSongPreference(STUDENT_ID, btAddressPhone, "harrypotter");
+  postUserSongPreference(STUDENT_ID, btAddressLaptop, "doom");
+}
+
+void connectToWifi()
+{
+  Serial.printf("Connecting to %s ", ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to WiFi network with IP Address: ");
+  Serial.println(WiFi.localIP());
 }
 
 void setup()
@@ -49,51 +87,24 @@ void setup()
     continue;
 
   // Connect to Wi-Fi
-  Serial.printf("Connecting to %s ", ssid);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.print("Connected to WiFi network with IP Address: ");
-  Serial.println(WiFi.localIP());
+  connectToWifi();
 
-  // Bluetooth Serial
-  SerialBT.begin("ESP32_TTGO_40250986"); // Bluetooth device name
-  Serial.println("The device started, now you can pair it with bluetooth!");
+  // // Bluetooth Serial
+  // SerialBT.begin("ESP32_TTGO_40250986"); // Bluetooth device name
+  // Serial.println("The device started, now you can pair it with bluetooth!");
 
-  if (btScanAsync)
-  {
-    Serial.print("Starting asynchronous discovery... ");
-    if (SerialBT.discoverAsync(btAdvertisedDeviceFound))
-    {
-      Serial.println("Findings will be reported in \"btAdvertisedDeviceFound\"");
-      delay(10000);
-      Serial.print("Stopping discoverAsync... ");
-      SerialBT.discoverAsyncStop();
-      Serial.println("stopped");
-    }
-    else
-    {
-      Serial.println("Error on discoverAsync f.e. not working after a \"connect\"");
-    }
-  }
+  // Serial.print("Starting asynchronous discovery... ");
+  // if (SerialBT.discoverAsync(btAdvertisedDeviceFound))
+  // {
+  //   isScanning = true;
+  // }
+  // else
+  // {
+  //   Serial.println("Error starting discoverAsync");
+  //   isScanning = false;
+  // }
 
-  if (btScanSync)
-  {
-    Serial.println("Starting synchronous discovery... ");
-    BTScanResults *pResults = SerialBT.discover(BT_DISCOVER_TIME);
-    if (pResults)
-    {
-      pResults->dump(&Serial);
-    }
-    else
-    {
-      Serial.println("Error on BT Scan, no result!");
-    }
-  }
+  // setSongPreferenceOnStartup();
 }
 
 /**
@@ -255,22 +266,47 @@ void playSong(const JsonArray &melody, unsigned char tempo)
   }
 }
 
+JsonDocument songDoc;
+
 void loop()
 {
-  JsonDocument songDoc;
-  if (getSongJson("harrypotter", songDoc))
-  {
-    Serial.println("Successfully fetched song: ");
-    Serial.println("JSON Song Data: ");
-    serializeJsonPretty(songDoc, Serial);
+  unsigned long now = millis();
 
-    Serial.println("Playing song...");
-    playSong(songDoc["melody"], songDoc["tempo"].as<unsigned char>());
-  }
-  else
-  {
-    Serial.println("Failed to retrieve song data.");
-  }
+  // if (!SerialBT.hasClient())
+  // {
+  //   if (BTDeviceConnected)
+  //   {
+  //     Serial.println("Client disconnected.");
+  //     BTDeviceConnected = false;
+  //   }
+  // }
 
-  delay(3000);
+  // if (!BTDeviceConnected && !isScanning)
+  // {
+  //   Serial.println("Starting Bluetooth discovery...");
+  //   if (SerialBT.discoverAsync(btAdvertisedDeviceFound))
+  //   {
+  //     isScanning = true;
+  //   }
+  //   else
+  //   {
+  //     Serial.println("Error starting discoverAsync");
+  //   }
+  // }
+
+  // if (getSongJson("harrypotter", songDoc))
+  // {
+  //   Serial.println("Successfully fetched song: ");
+  //   Serial.println("JSON Song Data: ");
+  //   serializeJsonPretty(songDoc, Serial);
+
+  //   Serial.println("Playing song...");
+  //   playSong(songDoc["melody"], songDoc["tempo"].as<unsigned char>());
+  // }
+  // else
+  // {
+  //   Serial.println("Failed to retrieve song data.");
+  // }
+
+  delay(1000);
 }
