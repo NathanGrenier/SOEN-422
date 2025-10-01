@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <iostream>
-// #include <BluetoothSerial.h>
+#include <BluetoothSerial.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
@@ -12,9 +12,9 @@
 #error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
 #endif
 
-// #if !defined(CONFIG_BT_SPP_ENABLED)
-// #error Serial Bluetooth not available or not enabled. It is only available for the ESP32 chip.
-// #endif
+#if !defined(CONFIG_BT_SPP_ENABLED)
+#error Serial Bluetooth not available or not enabled. It is only available for the ESP32 chip.
+#endif
 
 const char *ssid = WIFI_SSID;
 const char *password = WIFI_PASSWORD;
@@ -26,7 +26,7 @@ const String BT_ADDRESS_LAPTOP = "E0:0A:F6:B8:D5:76";
 
 const unsigned char BUZZER_PIN = 21;
 
-// BluetoothSerial SerialBT;
+BluetoothSerial SerialBT;
 
 bool BTDeviceConnected = false;
 bool isScanning;
@@ -35,27 +35,27 @@ String currentBTAddress;
 
 bool postUserSongPreference(unsigned int studentId, const String &bluetoothAddress, const String &songName);
 
-// void btAdvertisedDeviceFound(BTAdvertisedDevice *pDevice)
-// {
-//   Serial.printf("Found a device asynchronously: %s\n", pDevice->toString().c_str());
-//   String deviceName = String(pDevice->getName().c_str());
+void btAdvertisedDeviceFound(BTAdvertisedDevice *pDevice)
+{
+  Serial.printf("Found a device asynchronously: %s\n", pDevice->toString().c_str());
+  String deviceName = String(pDevice->getName().c_str());
 
-//   SerialBT.discoverAsyncStop();
-//   isScanning = false;
+  SerialBT.discoverAsyncStop();
+  isScanning = false;
 
-//   Serial.println("Trying to connect...");
-//   if (SerialBT.connect(pDevice->getAddress()))
-//   {
-//     Serial.println("Connected to device: " + deviceName);
-//     currentBTAddress = pDevice->getAddress().toString();
-//     BTDeviceConnected = true;
-//   }
-//   else
-//   {
-//     Serial.println("Failed to connect to device: " + deviceName);
-//     BTDeviceConnected = false;
-//   }
-// }
+  Serial.println("Trying to connect...");
+  if (SerialBT.connect(pDevice->getAddress()))
+  {
+    Serial.println("Connected to device: " + deviceName);
+    currentBTAddress = pDevice->getAddress().toString();
+    BTDeviceConnected = true;
+  }
+  else
+  {
+    Serial.println("Failed to connect to device: " + deviceName);
+    BTDeviceConnected = false;
+  }
+}
 
 void setSongPreferenceOnStartup()
 {
@@ -92,19 +92,19 @@ void setup()
   connectToWifi();
 
   // // Bluetooth Serial
-  // SerialBT.begin("ESP32_40250986"); // Bluetooth device name
-  // Serial.println("The device started, now you can pair it with bluetooth!");
+  SerialBT.begin("ESP32_40250986"); // Bluetooth device name
+  Serial.println("The device started, now you can pair it with bluetooth!");
 
-  // Serial.print("Starting asynchronous discovery... ");
-  // if (SerialBT.discoverAsync(btAdvertisedDeviceFound))
-  // {
-  //   isScanning = true;
-  // }
-  // else
-  // {
-  //   Serial.println("Error starting discoverAsync");
-  //   isScanning = false;
-  // }
+  Serial.print("Starting asynchronous discovery... ");
+  if (SerialBT.discoverAsync(btAdvertisedDeviceFound))
+  {
+    isScanning = true;
+  }
+  else
+  {
+    Serial.println("Error starting discoverAsync");
+    isScanning = false;
+  }
 
   setSongPreferenceOnStartup();
 }
@@ -280,27 +280,31 @@ void loop()
 {
   unsigned long now = millis();
 
-  // if (!SerialBT.hasClient())
-  // {
-  //   if (BTDeviceConnected)
-  //   {
-  //     Serial.println("Client disconnected.");
-  //     BTDeviceConnected = false;
-  //   }
-  // }
+  if (!SerialBT.hasClient())
+  {
+    if (BTDeviceConnected)
+    {
+      Serial.println("Client disconnected.");
+      BTDeviceConnected = false;
+      preferenceDoc.clear();
+      songDoc.clear();
+      songName = "";
+      currentBTAddress = "";
+    }
+  }
 
-  // if (!BTDeviceConnected && !isScanning)
-  // {
-  //   Serial.println("Starting Bluetooth discovery...");
-  //   if (SerialBT.discoverAsync(btAdvertisedDeviceFound))
-  //   {
-  //     isScanning = true;
-  //   }
-  //   else
-  //   {
-  //     Serial.println("Error starting discoverAsync");
-  //   }
-  // }
+  if (!BTDeviceConnected && !isScanning)
+  {
+    Serial.println("Starting Bluetooth discovery...");
+    if (SerialBT.discoverAsync(btAdvertisedDeviceFound))
+    {
+      isScanning = true;
+    }
+    else
+    {
+      Serial.println("Error starting discoverAsync");
+    }
+  }
 
   if (WiFi.status() != WL_CONNECTED)
   {
@@ -308,33 +312,55 @@ void loop()
     connectToWifi();
   }
 
-  if (getUserSongPreference(STUDENT_ID, BT_ADDRESS_LAPTOP, preferenceDoc))
+  if (BTDeviceConnected && currentBTAddress != "")
   {
-    Serial.println("Successfully fetched user song preference: ");
-    Serial.println("JSON Preference Data: ");
-    serializeJsonPretty(preferenceDoc, Serial);
-    Serial.println();
+    if (preferenceDoc.isNull())
+    {
+      Serial.println("Fetching user song preference...");
+      if (getUserSongPreference(STUDENT_ID, currentBTAddress, preferenceDoc))
+      {
+        Serial.println("Successfully fetched user song preference: ");
+        Serial.println("JSON Preference Data: ");
+        serializeJsonPretty(preferenceDoc, Serial);
+        Serial.println();
 
-    songName = preferenceDoc["name"].as<String>();
-  }
-  else
-  {
-    Serial.println("Failed to retrieve user song preference.");
-  }
+        songName = preferenceDoc["name"].as<String>();
+      }
+      else
+      {
+        Serial.println("Failed to retrieve user song preference.");
+      }
+    }
 
-  if (getSongJson(songName, songDoc))
-  {
-    Serial.println("Successfully fetched song: ");
-    Serial.println("JSON Song Data: ");
-    serializeJsonPretty(songDoc, Serial);
+    if (songDoc.isNull())
+    {
+      if (songName == "")
+      {
+        Serial.println("Fetching user's perfered song data...");
+        if (getSongJson(songName, songDoc))
+        {
+          Serial.println("Successfully fetched song: ");
+          Serial.println("JSON Song Data: ");
+          serializeJsonPretty(songDoc, Serial);
+          Serial.println();
+        }
+        else
+        {
+          Serial.println("Failed to retrieve song data.");
+        }
+      }
+      else
+      {
+        Serial.println("No song preference set for this device.");
+      }
+    }
 
-    Serial.println("Playing song...");
-    playSong(songDoc["melody"], songDoc["tempo"].as<unsigned char>());
+    if (!songDoc.isNull())
+    {
+      Serial.println("Playing song: " + songName);
+      JsonArray melody = songDoc["melody"].as<JsonArray>();
+      unsigned char tempo = songDoc["tempo"].as<unsigned char>();
+      playSong(melody, tempo);
+    }
   }
-  else
-  {
-    Serial.println("Failed to retrieve song data.");
-  }
-
-  delay(5000);
 }
