@@ -27,6 +27,7 @@ const String BT_ADDRESS_LAPTOP = "E0:0A:F6:B8:D5:76";
 const unsigned char BUZZER_PIN = 21;
 
 // BluetoothSerial SerialBT;
+// const char *BT_PIN = "1337";
 
 bool BTDeviceConnected = false;
 bool isScanning;
@@ -92,7 +93,13 @@ void setup()
   connectToWifi();
 
   // // Bluetooth Serial
+
+  // Good Website for Master -> Slave BT Communication: // https://deepbluembedded.com/esp32-bluetooth-classic-with-arduino-complete-guide/
+
+  // Good Website for ESP32 Interrupts: https://deepbluembedded.com/esp32-timers-timer-interrupt-tutorial-arduino-ide/
+
   // SerialBT.begin("ESP32_40250986"); // Bluetooth device name
+  // SerialBT.setPin(BT_PIN);
   // Serial.println("The device started, now you can pair it with bluetooth!");
 
   // Serial.print("Starting asynchronous discovery... ");
