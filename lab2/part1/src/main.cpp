@@ -21,39 +21,45 @@ const char *password = WIFI_PASSWORD;
 
 const unsigned int STUDENT_ID = 40250986;
 
-const String BT_ADDRESS_PHONE = "00:2B:70:AA:3E:92";
+const String BT_ADDRESS_PHONE = "00:2b:70:aa:3e:92";
 const String BT_ADDRESS_LAPTOP = "E0:0A:F6:B8:D5:76";
+const String VALID_BT_ADDRESS[] = {BT_ADDRESS_PHONE, BT_ADDRESS_LAPTOP};
+String currentBTAddress;
 
 const unsigned char BUZZER_PIN = 21;
 
 BluetoothSerial SerialBT;
-
-bool BTDeviceConnected = false;
 bool isScanning;
-
-String currentBTAddress;
 
 bool postUserSongPreference(unsigned int studentId, const String &bluetoothAddress, const String &songName);
 
 void btAdvertisedDeviceFound(BTAdvertisedDevice *pDevice)
 {
   Serial.printf("Found a device asynchronously: %s\n", pDevice->toString().c_str());
-  String deviceName = String(pDevice->getName().c_str());
 
-  SerialBT.discoverAsyncStop();
-  isScanning = false;
+  bool isValidDevice = false;
+  String deviceAddress = pDevice->getAddress().toString();
 
-  Serial.println("Trying to connect...");
-  if (SerialBT.connect(pDevice->getAddress()))
+  for (const String &validAddress : VALID_BT_ADDRESS)
   {
-    Serial.println("Connected to device: " + deviceName);
-    currentBTAddress = pDevice->getAddress().toString();
-    BTDeviceConnected = true;
+    if (deviceAddress.equals(validAddress))
+    {
+      isValidDevice = true;
+      break;
+    }
+  }
+
+  if (isValidDevice)
+  {
+    currentBTAddress = deviceAddress;
+    Serial.println("Device Match Found for: " + deviceAddress);
+    SerialBT.discoverAsyncStop();
+    isScanning = false;
   }
   else
   {
-    Serial.println("Failed to connect to device: " + deviceName);
-    BTDeviceConnected = false;
+    Serial.println("Unknown device: " + deviceAddress + " - Ignoring.");
+    return;
   }
 }
 
@@ -66,6 +72,15 @@ void setSongPreferenceOnStartup()
 void connectToWifi()
 {
   Serial.printf("Connecting to %s ", ssid);
+  if (strcmp(ssid, "SOEN422") == 0)
+  {
+    IPAddress local_IP(172, 30, 140, 210);
+    IPAddress gateway(172, 30, 140, 129);
+    IPAddress subnet(255, 255, 255, 128);
+    IPAddress primaryDNS(8, 8, 8, 8);
+    IPAddress secondaryDNS(8, 8, 4, 4);
+    WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS);
+  }
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED)
   {
@@ -88,12 +103,8 @@ void setup()
     delay(10);
   }
 
-  // Connect to Wi-Fi
-  connectToWifi();
-
   // // Bluetooth Serial
   SerialBT.begin("ESP32_40250986"); // Bluetooth device name
-  Serial.println("The device started, now you can pair it with bluetooth!");
 
   Serial.print("Starting asynchronous discovery... ");
   if (SerialBT.discoverAsync(btAdvertisedDeviceFound))
@@ -106,7 +117,17 @@ void setup()
     isScanning = false;
   }
 
-  setSongPreferenceOnStartup();
+  // Connect to Wi-Fi
+  connectToWifi();
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    // setSongPreferenceOnStartup();
+  }
+  else
+  {
+    Serial.println("WiFi connection failed.");
+  }
 }
 
 /**
@@ -135,10 +156,9 @@ bool getSongJson(const String &songName, JsonDocument &doc)
     return false;
   }
 
-  String payload = http.getString();
   http.end();
 
-  DeserializationError error = deserializeJson(doc, payload);
+  DeserializationError error = deserializeJson(doc, http.getStream());
   if (error)
   {
     Serial.print(F("deserializeJson() failed: "));
@@ -165,8 +185,7 @@ bool getUserSongPreference(unsigned int studentId, const String &bluetoothAddres
   }
 
   HTTPClient http;
-  String url = Api::UrlBuilder::getPreference(studentId, bluetoothAddress);
-  http.begin(url);
+  http.begin(Api::UrlBuilder::getPreference(studentId, bluetoothAddress));
 
   int httpResponseCode = http.GET();
   if (httpResponseCode <= 0)
@@ -176,10 +195,9 @@ bool getUserSongPreference(unsigned int studentId, const String &bluetoothAddres
     return false;
   }
 
-  String payload = http.getString();
   http.end();
 
-  DeserializationError error = deserializeJson(doc, payload);
+  DeserializationError error = deserializeJson(doc, http.getStream());
   if (error)
   {
     Serial.print(F("deserializeJson() failed: "));
@@ -272,6 +290,8 @@ void playSong(const JsonArray &melody, unsigned char tempo)
   }
 }
 
+const String VALID_SONGS[] = {"harrypotter", "doom"};
+
 JsonDocument songDoc;
 JsonDocument preferenceDoc;
 String songName = "";
@@ -280,22 +300,9 @@ void loop()
 {
   unsigned long now = millis();
 
-  if (!SerialBT.hasClient())
+  if (currentBTAddress == "" && !isScanning)
   {
-    if (BTDeviceConnected)
-    {
-      Serial.println("Client disconnected.");
-      BTDeviceConnected = false;
-      preferenceDoc.clear();
-      songDoc.clear();
-      songName = "";
-      currentBTAddress = "";
-    }
-  }
-
-  if (!BTDeviceConnected && !isScanning)
-  {
-    Serial.println("Starting Bluetooth discovery...");
+    Serial.println("No valid device connected, restarting discovery...");
     if (SerialBT.discoverAsync(btAdvertisedDeviceFound))
     {
       isScanning = true;
@@ -312,7 +319,7 @@ void loop()
     connectToWifi();
   }
 
-  if (BTDeviceConnected && currentBTAddress != "")
+  if (currentBTAddress != "")
   {
     if (preferenceDoc.isNull())
     {
@@ -334,9 +341,9 @@ void loop()
 
     if (songDoc.isNull())
     {
-      if (songName == "")
+      if (songName != "")
       {
-        Serial.println("Fetching user's perfered song data...");
+        Serial.println("Fetching user's preferred song data...");
         if (getSongJson(songName, songDoc))
         {
           Serial.println("Successfully fetched song: ");
@@ -361,6 +368,11 @@ void loop()
       JsonArray melody = songDoc["melody"].as<JsonArray>();
       unsigned char tempo = songDoc["tempo"].as<unsigned char>();
       playSong(melody, tempo);
+
+      preferenceDoc.clear();
+      songDoc.clear();
+      songName = "";
+      currentBTAddress = "";
     }
   }
 }
