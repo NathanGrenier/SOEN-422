@@ -1,11 +1,11 @@
 #include <Arduino.h>
 #include <iostream>
-#include <BluetoothSerial.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include "esp_system.h"
-#include "esp_bt.h"
+#include <BLEDevice.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
 
 #include "credentials.h"
 #include "api_config.h"
@@ -14,66 +14,60 @@
 #error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
 #endif
 
-#if !defined(CONFIG_BT_SPP_ENABLED)
-#error Serial Bluetooth not available or not enabled. It is only available for the ESP32 chip.
-#endif
-
 const char *ssid = WIFI_SSID;
 const char *password = WIFI_PASSWORD;
 
 const unsigned int STUDENT_ID = 40250986;
 
-const String BT_ADDRESS_PHONE = "00:2b:70:aa:3e:92";
-const String BT_ADDRESS_LAPTOP = "E0:0A:F6:B8:D5:76";
-const String VALID_BT_ADDRESS[] = {BT_ADDRESS_PHONE, BT_ADDRESS_LAPTOP};
+const String BLE_NAME_PHONE1[] = {"Yuma1", "doom"};
+const String BLE_NAME_PHONE2[] = {"Yuma2", "starwars"};
+const String VALID_BLE_NAMES[] = {BLE_NAME_PHONE1[0], BLE_NAME_PHONE2[0]};
 String currentBTAddress;
+String currentDeviceName;
 
 const unsigned char BUZZER_PIN = 21;
 
-BluetoothSerial SerialBT;
-bool isScanning;
+BLEScan *pBLEScan;
+volatile bool isScanning = false;
+volatile bool isProcessing = false;
 
 bool postUserSongPreference(unsigned int studentId, const String &bluetoothAddress, const String &songName);
 
-void btAdvertisedDeviceFound(BTAdvertisedDevice *pDevice)
+class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
 {
-  Serial.printf("Found a device asynchronously: %s\n", pDevice->toString().c_str());
-
-  bool isValidDevice = false;
-  String deviceAddress = pDevice->getAddress().toString();
-
-  for (const String &validAddress : VALID_BT_ADDRESS)
+  void onResult(BLEAdvertisedDevice advertisedDevice)
   {
-    if (deviceAddress.equals(validAddress))
+    String deviceAddress = advertisedDevice.getAddress().toString().c_str();
+    String deviceName = advertisedDevice.haveName() ? advertisedDevice.getName().c_str() : "N/A";
+    Serial.printf("Found Device: Address: %s, Name: %s, RSSI: %d\n",
+                  deviceAddress.c_str(),
+                  deviceName.c_str(),
+                  advertisedDevice.getRSSI());
+
+    // Do not process if we are already handling a device
+    if (isProcessing)
     {
-      isValidDevice = true;
-      break;
+      return;
+    }
+
+    bool isValidDevice = false;
+    for (const String &validName : VALID_BLE_NAMES)
+    {
+      if (deviceName.equals(validName))
+      {
+        isValidDevice = true;
+        break;
+      }
+    }
+
+    if (isValidDevice)
+    {
+      currentBTAddress = deviceAddress;
+      currentDeviceName = deviceName;
+      isProcessing = true;
     }
   }
-
-  if (isValidDevice)
-  {
-    currentBTAddress = deviceAddress;
-    Serial.println("Device Match Found for: " + deviceAddress);
-    // Stop scanning for other devices
-    SerialBT.discoverAsyncStop();
-    isScanning = false;
-
-    // Clear any previously detected devices to free memory
-    SerialBT.discoverClear();
-  }
-  else
-  {
-    Serial.println("Unknown device: " + deviceAddress + " - Ignoring.");
-    return;
-  }
-}
-
-void setSongPreferenceOnStartup()
-{
-  postUserSongPreference(STUDENT_ID, BT_ADDRESS_PHONE, "harrypotter");
-  postUserSongPreference(STUDENT_ID, BT_ADDRESS_LAPTOP, "doom");
-}
+};
 
 void connectToWifi()
 {
@@ -109,34 +103,28 @@ void setup()
     delay(10);
   }
 
-  // Free BLE controller memory (we only use Classic BT Serial)
-  esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
+  // Free Classic BT controller memory (we only use BLE)
+  esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
 
-  // // Bluetooth Serial
-  SerialBT.begin("ESP32_40250986"); // Bluetooth device name
-
-  Serial.print("Starting asynchronous discovery... ");
-  if (SerialBT.discoverAsync(btAdvertisedDeviceFound))
-  {
-    isScanning = true;
-  }
-  else
-  {
-    Serial.println("Error starting discoverAsync");
-    isScanning = false;
-  }
+  BLEDevice::init("ESP32_40250986");
+  pBLEScan = BLEDevice::getScan();
+  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  pBLEScan->setActiveScan(true); // active scan uses more power, but gets results faster
+  pBLEScan->setInterval(100);
+  pBLEScan->setWindow(99);
 
   // Connect to Wi-Fi
   connectToWifi();
 
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    // setSongPreferenceOnStartup();
-  }
-  else
+  if (WiFi.status() != WL_CONNECTED)
   {
     Serial.println("WiFi connection failed.");
   }
+
+  // Start BLE Scan
+  Serial.println("Starting BLE scan...");
+  pBLEScan->start(0, nullptr, false); // Scan indefinitely, don't block, and don't store results after callback
+  isScanning = true;
 }
 
 /**
@@ -152,8 +140,6 @@ bool getSongJson(const String &songName, JsonDocument &doc)
     Serial.println("WiFi Disconnected, cannot fetch song.");
     return false;
   }
-
-  // SerialBT.end();
 
   WiFiClientSecure secureClient;
   secureClient.setInsecure();
@@ -203,20 +189,12 @@ bool getUserSongPreference(unsigned int studentId, const String &bluetoothAddres
     return false;
   }
 
-  SerialBT.end();
-
   WiFiClientSecure secureClient;
-  secureClient.setInsecure(); // Use this for sites with self-signed certificates or to simplify
+  secureClient.setInsecure();
 
   HTTPClient http;
-  String url = Api::UrlBuilder::getPreference(studentId, bluetoothAddress);
-  Serial.println("BT Address: " + bluetoothAddress + " | Student ID: " + String(studentId));
-  Serial.println("Fetching from URL: " + url);
-  if (!http.begin(secureClient, url))
-  {
-    Serial.println("HTTPs begin() failed.");
-    return false;
-  }
+  http.useHTTP10(true);
+  http.begin(secureClient, Api::UrlBuilder::getPreference(studentId, bluetoothAddress));
 
   int httpResponseCode = http.GET();
   if (httpResponseCode != HTTP_CODE_OK)
@@ -259,12 +237,15 @@ bool postUserSongPreference(unsigned int studentId, const String &bluetoothAddre
     return false;
   }
 
+  WiFiClientSecure secureClient;
+  secureClient.setInsecure();
+
   HTTPClient http;
-  http.begin(Api::UrlBuilder::postPreference(studentId, bluetoothAddress, songName));
+  http.begin(secureClient, Api::UrlBuilder::postPreference(studentId, bluetoothAddress, songName));
 
   // No body needed for this POST request
   int httpResponseCode = http.POST("");
-  if (httpResponseCode != HTTP_CODE_OK)
+  if (httpResponseCode != HTTP_CODE_OK && httpResponseCode != HTTP_CODE_CREATED)
   {
     String response = http.getString();
     if (response.length() > 120)
@@ -276,12 +257,12 @@ bool postUserSongPreference(unsigned int studentId, const String &bluetoothAddre
     return false;
   }
 
-  // String response = http.getString();
+  String response = http.getString();
 
-  // if (httpResponseCode == HTTP_CODE_OK && response.length() > 0)
-  // {
-  //   Serial.println("Response from server: " + response);
-  // }
+  if (httpResponseCode == HTTP_CODE_OK && response.length() > 0)
+  {
+    Serial.println("Response from server: " + response);
+  }
 
   http.end();
 
@@ -320,14 +301,19 @@ void playSong(const JsonArray &melody, unsigned char tempo)
     // A note of 0 is a rest, so just delay for the duration
     if (note > 0)
     {
-      tone(BUZZER_PIN, note, noteDuration * 0.9); // Play for 90% of duration
+      tone(BUZZER_PIN, note);
+      delay(noteDuration * 0.9); // Play for 90% of duration
+      noTone(BUZZER_PIN);
+
+      // Pause for the remaining 10% to create a gap between notes
+      delay(noteDuration * 0.1);
+
+      // tone(BUZZER_PIN, note, noteDuration * 0.9); // Asynchronous tone playback (stops after duration)
     }
-
-    // Pause for the full duration to separate notes
-    delay(noteDuration);
-
-    // Stop the waveform generation before the next note
-    noTone(BUZZER_PIN);
+    else
+    {
+      delay(noteDuration); // Rest
+    }
   }
 }
 
@@ -337,98 +323,95 @@ String songName = "";
 
 void loop()
 {
-  // Total free heap (SRAM available for dynamic allocation)
-  // Serial.printf("Free heap: %d bytes\n", esp_get_free_heap_size());
-  // Serial.printf("1: Largest free block: %d bytes\n", heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-
-  unsigned long now = millis();
-
-  if (currentBTAddress == "" && !isScanning)
-  {
-    Serial.println("No valid device connected, restarting discovery...");
-    if (SerialBT.discoverAsync(btAdvertisedDeviceFound))
-    {
-      isScanning = true;
-    }
-    else
-    {
-      Serial.println("Error starting discoverAsync");
-    }
-  }
-
   if (WiFi.status() != WL_CONNECTED)
   {
     Serial.println("WiFi Disconnected, trying to reconnect...");
     connectToWifi();
   }
 
-  if (currentBTAddress != "")
+  // If we are not busy processing a device and the scan is not running, start it.
+  if (!isProcessing && !isScanning)
   {
-    if (getSongJson("doom", songDoc))
+    Serial.println("Restarting BLE scan...");
+    pBLEScan->start(0, nullptr, false);
+    isScanning = true;
+  }
+
+  if (isProcessing)
+  {
+    // This is a safeguard against any lingering race conditions.
+    if (isScanning)
     {
-      Serial.println("Successfully fetched song: ");
-      Serial.println("JSON Song Data: ");
-      serializeJsonPretty(songDoc, Serial);
-      Serial.println();
+      pBLEScan->stop();
+      isScanning = false;
+    }
+
+    String songToSet = "";
+    if (currentDeviceName.equalsIgnoreCase(BLE_NAME_PHONE1[0]))
+    {
+      songToSet = BLE_NAME_PHONE1[1];
+    }
+    else if (currentDeviceName.equalsIgnoreCase(BLE_NAME_PHONE2[0]))
+    {
+      songToSet = BLE_NAME_PHONE2[1];
+    }
+
+    Serial.println("Setting song preference to '" + songToSet + "' for device " + currentBTAddress);
+    if (postUserSongPreference(STUDENT_ID, currentBTAddress, songToSet))
+    {
+      Serial.println("Successfully set song preference.");
+
+      // Now fetch and play the song
+      Serial.println("Fetching user song preference...");
+      if (getUserSongPreference(STUDENT_ID, currentBTAddress, preferenceDoc))
+      {
+        Serial.println("Successfully fetched user song preference: ");
+        serializeJsonPretty(preferenceDoc, Serial);
+        Serial.println();
+        songName = preferenceDoc["name"].as<String>();
+      }
+      else
+      {
+        Serial.println("Failed to retrieve user song preference.");
+        songName = "";
+      }
+
+      if (songName != "")
+      {
+        Serial.println("Fetching user's preferred song data...");
+        if (getSongJson(songName, songDoc))
+        {
+          Serial.println("Successfully fetched song: ");
+          serializeJsonPretty(songDoc, Serial);
+          Serial.println();
+
+          Serial.println("Playing song: " + songName);
+          JsonArray melody = songDoc["melody"].as<JsonArray>();
+          unsigned char tempo = songDoc["tempo"].as<unsigned char>();
+          playSong(melody, tempo);
+        }
+        else
+        {
+          Serial.println("Failed to retrieve song data.");
+        }
+      }
+      else
+      {
+        Serial.println("No song preference set for this device.");
+      }
     }
     else
     {
-      Serial.println("Failed to retrieve song data.");
+      Serial.println("Failed to set song preference.");
     }
 
-    // if (preferenceDoc.isNull())
-    // {
-    //   Serial.println("Fetching user song preference...");
-    //   if (getUserSongPreference(STUDENT_ID, currentBTAddress, preferenceDoc))
-    //   {
-    //     Serial.println("Successfully fetched user song preference: ");
-    //     Serial.println("JSON Preference Data: ");
-    //     serializeJsonPretty(preferenceDoc, Serial);
-    //     Serial.println();
-
-    //     songName = preferenceDoc["name"].as<String>();
-    //   }
-    //   else
-    //   {
-    //     Serial.println("Failed to retrieve user song preference.");
-    //   }
-    // }
-
-    // if (songDoc.isNull())
-    // {
-    //   if (songName != "")
-    //   {
-    //     Serial.println("Fetching user's preferred song data...");
-    //     if (getSongJson(songName, songDoc))
-    //     {
-    //       Serial.println("Successfully fetched song: ");
-    //       Serial.println("JSON Song Data: ");
-    //       serializeJsonPretty(songDoc, Serial);
-    //       Serial.println();
-
-    //     }
-    //     else
-    //     {
-    //       Serial.println("Failed to retrieve song data.");
-    //     }
-    //   }
-    //   else
-    //   {
-    //     Serial.println("No song preference set for this device.");
-    //   }
-    // }
-
-    // if (!songDoc.isNull())
-    // {
-    //   Serial.println("Playing song: " + songName);
-    //   JsonArray melody = songDoc["melody"].as<JsonArray>();
-    //   unsigned char tempo = songDoc["tempo"].as<unsigned char>();
-    //   playSong(melody, tempo);
-
-    //   songName = "";
-    //   currentBTAddress = "";
-    // }
+    // Reset state to allow for a new scan, regardless of success or failure
+    Serial.println("Processing complete. Resetting for next scan.");
+    currentBTAddress = "";
+    currentDeviceName = "";
+    songName = "";
+    preferenceDoc.clear();
+    songDoc.clear();
+    isProcessing = false;
   }
-
-  delay(1000);
 }
