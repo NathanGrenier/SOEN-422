@@ -4,6 +4,8 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include "esp_system.h"
+#include "esp_bt.h"
 
 #include "credentials.h"
 #include "api_config.h"
@@ -53,8 +55,12 @@ void btAdvertisedDeviceFound(BTAdvertisedDevice *pDevice)
   {
     currentBTAddress = deviceAddress;
     Serial.println("Device Match Found for: " + deviceAddress);
+    // Stop scanning for other devices
     SerialBT.discoverAsyncStop();
     isScanning = false;
+
+    // Clear any previously detected devices to free memory
+    SerialBT.discoverClear();
   }
   else
   {
@@ -103,6 +109,9 @@ void setup()
     delay(10);
   }
 
+  // Free BLE controller memory (we only use Classic BT Serial)
+  esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
+
   // // Bluetooth Serial
   SerialBT.begin("ESP32_40250986"); // Bluetooth device name
 
@@ -144,21 +153,31 @@ bool getSongJson(const String &songName, JsonDocument &doc)
     return false;
   }
 
+  // SerialBT.end();
+
+  WiFiClientSecure secureClient;
+  secureClient.setInsecure();
+
   HTTPClient http;
-  String url = Api::UrlBuilder::getSong(songName);
-  http.begin(url);
+  http.useHTTP10(true);
+  http.begin(secureClient, Api::UrlBuilder::getSong(songName));
 
   int httpResponseCode = http.GET();
-  if (httpResponseCode <= 0)
+  if (httpResponseCode != HTTP_CODE_OK)
   {
-    Serial.printf("Error on HTTP request: %d\n", httpResponseCode);
+    String response = http.getString();
+    if (response.length() > 120)
+    {
+      response = response.substring(0, 120) + "...";
+    }
+    Serial.printf("Error [%d]: %s\n", httpResponseCode, response.c_str());
     http.end();
     return false;
   }
 
+  DeserializationError error = deserializeJson(doc, http.getStream());
   http.end();
 
-  DeserializationError error = deserializeJson(doc, http.getStream());
   if (error)
   {
     Serial.print(F("deserializeJson() failed: "));
@@ -184,20 +203,37 @@ bool getUserSongPreference(unsigned int studentId, const String &bluetoothAddres
     return false;
   }
 
+  SerialBT.end();
+
+  WiFiClientSecure secureClient;
+  secureClient.setInsecure(); // Use this for sites with self-signed certificates or to simplify
+
   HTTPClient http;
-  http.begin(Api::UrlBuilder::getPreference(studentId, bluetoothAddress));
+  String url = Api::UrlBuilder::getPreference(studentId, bluetoothAddress);
+  Serial.println("BT Address: " + bluetoothAddress + " | Student ID: " + String(studentId));
+  Serial.println("Fetching from URL: " + url);
+  if (!http.begin(secureClient, url))
+  {
+    Serial.println("HTTPs begin() failed.");
+    return false;
+  }
 
   int httpResponseCode = http.GET();
-  if (httpResponseCode <= 0)
+  if (httpResponseCode != HTTP_CODE_OK)
   {
-    Serial.printf("Error on HTTP request: %d\n", httpResponseCode);
+    String response = http.getString();
+    if (response.length() > 120)
+    {
+      response = response.substring(0, 120) + "...";
+    }
+    Serial.printf("Error [%d]: %s\n", httpResponseCode, response.c_str());
     http.end();
     return false;
   }
 
+  DeserializationError error = deserializeJson(doc, http.getStream());
   http.end();
 
-  DeserializationError error = deserializeJson(doc, http.getStream());
   if (error)
   {
     Serial.print(F("deserializeJson() failed: "));
@@ -224,26 +260,31 @@ bool postUserSongPreference(unsigned int studentId, const String &bluetoothAddre
   }
 
   HTTPClient http;
-  String url = Api::UrlBuilder::postPreference(studentId, bluetoothAddress, songName);
-  http.begin(url);
+  http.begin(Api::UrlBuilder::postPreference(studentId, bluetoothAddress, songName));
 
   // No body needed for this POST request
   int httpResponseCode = http.POST("");
-  if (httpResponseCode <= 0)
+  if (httpResponseCode != HTTP_CODE_OK)
   {
-    Serial.printf("Error on HTTP POST request: %d\n", httpResponseCode);
+    String response = http.getString();
+    if (response.length() > 120)
+    {
+      response = response.substring(0, 120) + "...";
+    }
+    Serial.printf("Error [%d]: %s\n", httpResponseCode, response.c_str());
     http.end();
     return false;
   }
 
-  String response = http.getString();
+  // String response = http.getString();
 
-  if (httpResponseCode == HTTP_CODE_OK && response.length() > 0)
-  {
-    Serial.println("Response from server: " + response);
-  }
+  // if (httpResponseCode == HTTP_CODE_OK && response.length() > 0)
+  // {
+  //   Serial.println("Response from server: " + response);
+  // }
 
   http.end();
+
   return true;
 }
 
@@ -290,14 +331,16 @@ void playSong(const JsonArray &melody, unsigned char tempo)
   }
 }
 
-const String VALID_SONGS[] = {"harrypotter", "doom"};
-
 JsonDocument songDoc;
 JsonDocument preferenceDoc;
 String songName = "";
 
 void loop()
 {
+  // Total free heap (SRAM available for dynamic allocation)
+  // Serial.printf("Free heap: %d bytes\n", esp_get_free_heap_size());
+  // Serial.printf("1: Largest free block: %d bytes\n", heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+
   unsigned long now = millis();
 
   if (currentBTAddress == "" && !isScanning)
@@ -321,58 +364,71 @@ void loop()
 
   if (currentBTAddress != "")
   {
-    if (preferenceDoc.isNull())
+    if (getSongJson("doom", songDoc))
     {
-      Serial.println("Fetching user song preference...");
-      if (getUserSongPreference(STUDENT_ID, currentBTAddress, preferenceDoc))
-      {
-        Serial.println("Successfully fetched user song preference: ");
-        Serial.println("JSON Preference Data: ");
-        serializeJsonPretty(preferenceDoc, Serial);
-        Serial.println();
-
-        songName = preferenceDoc["name"].as<String>();
-      }
-      else
-      {
-        Serial.println("Failed to retrieve user song preference.");
-      }
+      Serial.println("Successfully fetched song: ");
+      Serial.println("JSON Song Data: ");
+      serializeJsonPretty(songDoc, Serial);
+      Serial.println();
+    }
+    else
+    {
+      Serial.println("Failed to retrieve song data.");
     }
 
-    if (songDoc.isNull())
-    {
-      if (songName != "")
-      {
-        Serial.println("Fetching user's preferred song data...");
-        if (getSongJson(songName, songDoc))
-        {
-          Serial.println("Successfully fetched song: ");
-          Serial.println("JSON Song Data: ");
-          serializeJsonPretty(songDoc, Serial);
-          Serial.println();
-        }
-        else
-        {
-          Serial.println("Failed to retrieve song data.");
-        }
-      }
-      else
-      {
-        Serial.println("No song preference set for this device.");
-      }
-    }
+    // if (preferenceDoc.isNull())
+    // {
+    //   Serial.println("Fetching user song preference...");
+    //   if (getUserSongPreference(STUDENT_ID, currentBTAddress, preferenceDoc))
+    //   {
+    //     Serial.println("Successfully fetched user song preference: ");
+    //     Serial.println("JSON Preference Data: ");
+    //     serializeJsonPretty(preferenceDoc, Serial);
+    //     Serial.println();
 
-    if (!songDoc.isNull())
-    {
-      Serial.println("Playing song: " + songName);
-      JsonArray melody = songDoc["melody"].as<JsonArray>();
-      unsigned char tempo = songDoc["tempo"].as<unsigned char>();
-      playSong(melody, tempo);
+    //     songName = preferenceDoc["name"].as<String>();
+    //   }
+    //   else
+    //   {
+    //     Serial.println("Failed to retrieve user song preference.");
+    //   }
+    // }
 
-      preferenceDoc.clear();
-      songDoc.clear();
-      songName = "";
-      currentBTAddress = "";
-    }
+    // if (songDoc.isNull())
+    // {
+    //   if (songName != "")
+    //   {
+    //     Serial.println("Fetching user's preferred song data...");
+    //     if (getSongJson(songName, songDoc))
+    //     {
+    //       Serial.println("Successfully fetched song: ");
+    //       Serial.println("JSON Song Data: ");
+    //       serializeJsonPretty(songDoc, Serial);
+    //       Serial.println();
+
+    //     }
+    //     else
+    //     {
+    //       Serial.println("Failed to retrieve song data.");
+    //     }
+    //   }
+    //   else
+    //   {
+    //     Serial.println("No song preference set for this device.");
+    //   }
+    // }
+
+    // if (!songDoc.isNull())
+    // {
+    //   Serial.println("Playing song: " + songName);
+    //   JsonArray melody = songDoc["melody"].as<JsonArray>();
+    //   unsigned char tempo = songDoc["tempo"].as<unsigned char>();
+    //   playSong(melody, tempo);
+
+    //   songName = "";
+    //   currentBTAddress = "";
+    // }
   }
+
+  delay(1000);
 }
