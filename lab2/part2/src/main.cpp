@@ -1,15 +1,18 @@
 #include <Arduino.h>
-#include <iostream>
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <ArduinoJson.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <ArduinoJson.h>
+#include <iostream>
+#include <vector>
 
 #include "credentials.h"
 #include "api_config.h"
+
+using std::vector;
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
 #error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
@@ -29,6 +32,235 @@ const unsigned char BUZZER_PIN = 21;
 
 volatile bool isDeviceConnected = false;
 volatile bool isDeviceAuthenticated = false;
+
+hw_timer_t *MB_Timer = NULL;
+unsigned const char MB_TIMER_ID = 0;
+unsigned const char MB_PERIOD = 1000; // microseconds
+volatile bool MB_Tick = false;
+bool MB_TimerEnabled = false;
+
+void IRAM_ATTR MB_TimerISR()
+{
+  MB_Tick = true;
+}
+
+enum MP_States
+{
+  MP_Start,
+  MP_ClearSong,
+  MP_Process,
+  MP_FetchNextSong,
+  MP_FetchSongData,
+  MP_PrepareNote,
+  MP_PlayNote,
+  MP_SongEnd,
+  MP_PlayPause,
+  MP_NextSong,
+  MP_PreviousSong,
+};
+
+MP_States MP_State = MP_Start;
+MP_States MP_PrevState;
+
+vector<String> songQueue;
+signed int currentSongIndex;
+JsonDocument currentSongDoc;
+String currentSongName;
+JsonArray currentSongMelody;
+unsigned char currentSongTempo;
+volatile bool isPlaying;
+
+unsigned short currentNoteIndex;
+unsigned long nextNoteTime;
+unsigned short totalNoteTicks;
+unsigned short noteCounter;
+
+volatile bool handlePlayPause = false;
+volatile bool handleNextSong = false;
+volatile bool handlePreviousSong = false;
+
+void handleClientInput()
+{
+  if (handlePlayPause)
+  {
+    handlePlayPause = false;
+    if (isPlaying)
+    {
+      MP_PrevState = MP_State;
+      MP_State = MP_PlayPause;
+      noTone(BUZZER_PIN);
+      isPlaying = false;
+      Serial.println("-> Music Paused.");
+    }
+    else
+    {
+      isPlaying = true;
+    }
+  }
+
+  if (handleNextSong)
+  {
+    handleNextSong = false;
+  }
+
+  if (handlePreviousSong)
+  {
+    handlePreviousSong = false;
+  }
+}
+
+void TickFct_MusicPlayback()
+{
+  handleClientInput();
+
+  switch (MP_State)
+  { // Transitions
+  case MP_Start:
+    MP_State = MP_ClearSong;
+    break;
+  case MP_ClearSong:
+    MP_State = MP_Process;
+    break;
+  case MP_Process:
+    if (currentSongIndex < 0 || currentSongIndex >= songQueue.size())
+    {
+      MP_State = MP_FetchNextSong;
+    }
+    else if (currentSongDoc.isNull())
+    {
+      MP_State = MP_FetchSongData;
+    }
+    else if (currentSongName == currentSongDoc["name"].as<String>())
+    {
+      MP_State = MP_PrepareNote;
+    }
+    else
+    {
+      MP_State = MP_FetchSongData;
+    }
+    break;
+  case MP_FetchNextSong:
+    if (currentSongDoc.isNull())
+    {
+      MP_State = MP_FetchNextSong;
+    }
+    else if (!currentSongDoc.isNull())
+    {
+      MP_State = MP_PrepareNote;
+    }
+    break;
+  case MP_FetchSongData:
+    if (currentSongDoc.isNull())
+    {
+      MP_State = MP_FetchSongData;
+    }
+    else if (!currentSongDoc.isNull())
+    {
+      MP_State = MP_PrepareNote;
+    }
+    break;
+  case MP_PrepareNote:
+    MP_State = MP_PlayNote;
+    noteCounter = 0;
+    break;
+  case MP_PlayNote:
+    if (noteCounter <= totalNoteTicks)
+    {
+      MP_State = MP_PlayNote;
+      noteCounter++;
+    }
+    else if (noteCounter > totalNoteTicks)
+    {
+      if (currentNoteIndex > currentSongMelody.size() / 2)
+      {
+        MP_State = MP_SongEnd;
+      }
+      else
+      {
+        currentNoteIndex += 2;
+        MP_State = MP_PrepareNote;
+      }
+    }
+    break;
+  case MP_SongEnd:
+    MP_State = MP_ClearSong;
+    break;
+  case MP_PlayPause:
+    if (isPlaying)
+    {
+      MP_State = MP_PrevState;
+      Serial.println("-> Music Resumed.");
+    }
+    else
+    {
+      MP_State = MP_PlayPause;
+    }
+    break;
+  case MP_NextSong:
+    break;
+  case MP_PreviousSong:
+    break;
+  default:
+    MP_State = MP_ClearSong;
+  }
+
+  switch (MP_State)
+  { // State actions
+  case MP_Start:
+    currentSongIndex = -1;
+    break;
+  case MP_ClearSong:
+    currentSongDoc.clear();
+    currentSongName = "";
+    break;
+  case MP_Process:
+    if (currentSongIndex > 0 && currentSongIndex <= songQueue.size())
+    {
+      currentSongName = songQueue[currentSongIndex];
+    }
+    break;
+  case MP_FetchNextSong:
+    // Fetch next song.
+    // Store the name and song data.
+    break;
+  case MP_FetchSongData:
+    // Fetch Song Data using name of song.
+    break;
+  case MP_PlayNote:
+    if (noteCounter == 0)
+    {
+      playNote();
+    }
+    break;
+  case MP_SongEnd:
+    currentSongIndex++;
+    currentNoteIndex = 0;
+    nextNoteTime = 0;
+    isPlaying = false;
+    break;
+  case MP_PrepareNote:
+    noteCounter = 0;
+    wholeNote = (60000 * 4) / tempo;
+    durationValue = melody[currentNoteIndex + 1];
+    nextNoteTime = wholeNote / abs(durationValue);
+
+    if (durationValue < 0)
+    {
+      nextNoteTime *= 1.5;
+    }
+
+    totalNoteTicks = nextNoteTime / PERIOD;
+    break;
+  case MP_PlayPause:
+    break;
+  case MP_NextSong:
+    break;
+  case MP_PreviousSong:
+    break;
+  default: // ADD default behaviour below
+    break;
+  }
+}
 
 class MyServerCallbacks : public BLEServerCallbacks
 {
@@ -93,7 +325,6 @@ class MySecurityCallbacks : public BLESecurityCallbacks
     return true;
   }
 };
-
 class MyCharacteristicCallbacks : public BLECharacteristicCallbacks
 {
   void onWrite(BLECharacteristic *pCharacteristic)
@@ -107,15 +338,15 @@ class MyCharacteristicCallbacks : public BLECharacteristicCallbacks
       {
       // Play/Pause
       case '1':
-        Serial.println("-> Play/Pause command received.");
+        handlePlayPause = true;
         break;
       // Next Song
       case '2':
-        Serial.println("-> Next Song command received.");
+        handleNextSong = true;
         break;
       // Previous Song
       case '3':
-        Serial.println("-> Previous Song command received.");
+        handlePreviousSong = true;
         break;
       default:
         Serial.println("-> Unknown command: " + command);
@@ -154,6 +385,24 @@ void connectToWifi()
   Serial.println("");
   Serial.print("Connected to WiFi network with IP Address: ");
   Serial.println(WiFi.localIP());
+}
+
+void enableTimer(hw_timer_t *timer)
+{
+  if (!MB_TimerEnabled)
+  {
+    timerAlarmEnable(timer);
+    MB_TimerEnabled = true;
+  }
+}
+
+void disableTimer(hw_timer_t *timer)
+{
+  if (MB_TimerEnabled)
+  {
+    timerAlarmDisable(timer);
+    MB_TimerEnabled = false;
+  }
 }
 
 void setup()
@@ -214,6 +463,16 @@ void setup()
 
   // Connect to Wi-Fi
   connectToWifi();
+
+  // Initialize State Machine Timer ---
+  // Speicfy Timer ID, prescaler 80 (for 1MHz, 1us ticks), count up.
+  MB_Timer = timerBegin(MB_TIMER_ID, 80, true);
+  // Attach the ISR to the timer
+  timerAttachInterrupt(MB_Timer, &MB_TimerISR, true);
+  // Set alarm to trigger every PERIOD, and auto-reload
+  timerAlarmWrite(MB_Timer, MB_PERIOD, true);
+  // Start the timer's alarm
+  enableTimer(MB_Timer);
 }
 
 /**
@@ -357,15 +616,28 @@ void playSong(const JsonArray &melody, unsigned char tempo)
   }
 }
 
-JsonDocument songDoc;
-JsonDocument preferenceDoc;
-String songName = "";
-
 void loop()
 {
   if (WiFi.status() != WL_CONNECTED)
   {
+    // Stop the timer during reconnection
+    disableTimer(MB_Timer);
     Serial.println("WiFi Disconnected, trying to reconnect...");
     connectToWifi();
+
+    // Only restart the timer if reconnection was successful
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      enableTimer(MB_Timer);
+    }
+    return; // Skip the rest of the loop this iteration
+  }
+
+  if (MB_TimerEnabled)
+  {
+    TickFct_MusicPlayback();
+    while (!MB_Tick)
+      ;
+    MB_Tick = false;
   }
 }
