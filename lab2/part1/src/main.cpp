@@ -27,6 +27,7 @@ String currentDeviceName;
 
 const unsigned char BUZZER_PIN = 21;
 
+const int BLE_SCAN_DURATION = 5; // seconds
 BLEScan *pBLEScan;
 volatile bool isScanning = false;
 volatile bool isProcessing = false;
@@ -37,18 +38,18 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
 {
   void onResult(BLEAdvertisedDevice advertisedDevice)
   {
-    String deviceAddress = advertisedDevice.getAddress().toString().c_str();
-    String deviceName = advertisedDevice.haveName() ? advertisedDevice.getName().c_str() : "N/A";
-    Serial.printf("Found Device: Address: %s, Name: %s, RSSI: %d\n",
-                  deviceAddress.c_str(),
-                  deviceName.c_str(),
-                  advertisedDevice.getRSSI());
-
     // Do not process if we are already handling a device
     if (isProcessing)
     {
       return;
     }
+
+    String deviceAddress = advertisedDevice.getAddress().toString().c_str();
+    String deviceName = advertisedDevice.haveName() ? advertisedDevice.getName().c_str() : "N/A";
+    // Serial.printf("Found Device: Address: %s, Name: %s, RSSI: %d\n",
+    //               deviceAddress.c_str(),
+    //               deviceName.c_str(),
+    //               advertisedDevice.getRSSI());
 
     bool isValidDevice = false;
     for (const String &validName : VALID_BLE_NAMES)
@@ -68,6 +69,19 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
     }
   }
 };
+
+/**
+ * @brief Callback for when a finite BLE scan is complete.
+ * @param scanResults The results object containing devices found.
+ */
+void onScanComplete(BLEScanResults scanResults)
+{
+  Serial.println("Scan finished!");
+
+  pBLEScan->clearResults();
+
+  isScanning = false;
+}
 
 void connectToWifi()
 {
@@ -122,8 +136,8 @@ void setup()
   }
 
   // Start BLE Scan
-  Serial.println("Starting BLE scan...");
-  pBLEScan->start(0, nullptr, false); // Scan indefinitely, don't block, and don't store results after callback
+  Serial.printf("Starting BLE scan for %d seconds...\n", BLE_SCAN_DURATION);
+  pBLEScan->start(BLE_SCAN_DURATION, onScanComplete, false);
   isScanning = true;
 }
 
@@ -257,13 +271,12 @@ bool postUserSongPreference(unsigned int studentId, const String &bluetoothAddre
     return false;
   }
 
-  String response = http.getString();
-
-  if (httpResponseCode == HTTP_CODE_OK && response.length() > 0)
+  if (httpResponseCode != HTTP_CODE_OK && httpResponseCode != HTTP_CODE_CREATED)
   {
-    Serial.println("Response from server: " + response);
+    Serial.printf("Error [%d]\n", httpResponseCode);
+    http.end();
+    return false;
   }
-
   http.end();
 
   return true;
@@ -317,8 +330,6 @@ void playSong(const JsonArray &melody, unsigned char tempo)
   }
 }
 
-JsonDocument songDoc;
-JsonDocument preferenceDoc;
 String songName = "";
 
 void loop()
@@ -332,19 +343,15 @@ void loop()
   // If we are not busy processing a device and the scan is not running, start it.
   if (!isProcessing && !isScanning)
   {
-    Serial.println("Restarting BLE scan...");
-    pBLEScan->start(0, nullptr, false);
+    Serial.printf("Starting BLE scan for %d seconds...\n", BLE_SCAN_DURATION);
+    pBLEScan->start(BLE_SCAN_DURATION, onScanComplete, false);
     isScanning = true;
   }
 
   if (isProcessing)
   {
-    // This is a safeguard against any lingering race conditions.
-    if (isScanning)
-    {
-      pBLEScan->stop();
-      isScanning = false;
-    }
+    JsonDocument preferenceDoc;
+    JsonDocument songDoc;
 
     String songToSet = "";
     if (currentDeviceName.equalsIgnoreCase(BLE_NAME_PHONE1[0]))
@@ -360,14 +367,11 @@ void loop()
     if (postUserSongPreference(STUDENT_ID, currentBTAddress, songToSet))
     {
       Serial.println("Successfully set song preference.");
-
       // Now fetch and play the song
       Serial.println("Fetching user song preference...");
       if (getUserSongPreference(STUDENT_ID, currentBTAddress, preferenceDoc))
       {
         Serial.println("Successfully fetched user song preference: ");
-        serializeJsonPretty(preferenceDoc, Serial);
-        Serial.println();
         songName = preferenceDoc["name"].as<String>();
       }
       else
@@ -381,9 +385,7 @@ void loop()
         Serial.println("Fetching user's preferred song data...");
         if (getSongJson(songName, songDoc))
         {
-          Serial.println("Successfully fetched song: ");
-          serializeJsonPretty(songDoc, Serial);
-          Serial.println();
+          Serial.println("Successfully fetched song. ");
 
           Serial.println("Playing song: " + songName);
           JsonArray melody = songDoc["melody"].as<JsonArray>();
@@ -410,8 +412,6 @@ void loop()
     currentBTAddress = "";
     currentDeviceName = "";
     songName = "";
-    preferenceDoc.clear();
-    songDoc.clear();
     isProcessing = false;
   }
 }
