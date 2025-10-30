@@ -1,7 +1,5 @@
 #pragma once
 
-#include <Arduino.h>
-
 namespace Api
 {
     // Base URL for the API
