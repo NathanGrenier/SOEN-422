@@ -23,7 +23,7 @@ const unsigned short SERVO_MIN = 900;
 const unsigned short SERVO_MAX = 2100;
 
 hw_timer_t *MB_Timer = NULL;
-unsigned const char MB_TIMER_ID = 0;
+unsigned const char MB_TIMER_ID = 1;
 unsigned const short MB_PERIOD = 1000; // microseconds (1ms)
 volatile bool MB_Tick = false;
 bool MB_TimerEnabled = false;
@@ -85,10 +85,6 @@ void setup()
 
   // --- Servo Setup ---
   ESP32PWM::allocateTimer(0);
-  ESP32PWM::allocateTimer(1);
-  ESP32PWM::allocateTimer(2);
-  ESP32PWM::allocateTimer(3);
-
   servo.setPeriodHertz(50);
   servo.attach(SERVO_DATA, SERVO_MIN, SERVO_MAX);
 
