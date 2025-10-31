@@ -6,6 +6,10 @@
     {
       "name": "part1",
       "path": "."
+    },
+    {
+      "name": "part2",
+      "path": "../part2"
     }
   ],
   "settings": {
