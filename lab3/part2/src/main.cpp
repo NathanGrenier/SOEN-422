@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <SPIFFS.h>
+#include <time.h>
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
@@ -111,15 +112,28 @@ unsigned long stateTimer = 0;
 volatile bool loginSuccessTrigger = false;
 volatile bool loginFailTrigger = false;
 
+// --- NTP (Time) Configuration ---
+const char *ntpServer = "pool.ntp.org";
+// POSIX TZ string for Montreal (Eastern Time with DST)
+// EST5EDT = Standard time is EST (UTC-5), Daylight time is EDT
+// M3.2.0 = DST starts 2nd Sunday in March
+// M11.1.0 = DST ends 1st Sunday in November
+const char *tzInfo = "EST5EDT,M3.2.0,M11.1.0";
+
 // --- LoRaWAN Variables and Setup ---
 static const u1_t PROGMEM APPEUI[8] = APP_EUI;
 void os_getArtEui(u1_t *buf) { memcpy_P(buf, APPEUI, 8); }
-
 static const u1_t PROGMEM DEVEUI[8] = DEV_EUI;
 void os_getDevEui(u1_t *buf) { memcpy_P(buf, DEVEUI, 8); }
-
 static const u1_t PROGMEM APPKEY[16] = APP_KEY;
 void os_getDevKey(u1_t *buf) { memcpy_P(buf, APPKEY, 16); }
+
+struct LoRaLogPayload
+{
+  uint32_t timestamp; // 4 bytes for Unix time
+  uint8_t success;    // 1 byte (0 = fail, 1 = success)
+  char username[8];   // 8 bytes for a truncated username
+};
 
 static uint8_t mydata[] = "Hello, world!";
 static osjob_t sendjob;
@@ -134,20 +148,41 @@ void printHex2(unsigned v)
   Serial.print(v, HEX);
 }
 
-void do_send(osjob_t *j)
+/**
+ * @brief Prepares and queues a structured login attempt payload for LoRaWAN.
+ * @param username The username string from the login attempt.
+ * @param isSuccess True if the login was successful, false otherwise.
+ */
+void sendLoginAttemptLog(String username, bool isSuccess)
 {
-  // Check if there is not a current TX/RX job running
+  // Check if LoRaWAN is busy
   if (LMIC.opmode & OP_TXRXPEND)
   {
-    Serial.println(F("OP_TXRXPEND, not sending"));
+    Serial.println(F("OP_TXRXPEND, not sending login log"));
+    return;
   }
-  else
-  {
-    // Prepare upstream data transmission at the next possible time.
-    LMIC_setTxData2(1, mydata, sizeof(mydata) - 1, 0);
-    Serial.println(F("Packet queued"));
-  }
-  // Next TX is scheduled after TX_COMPLETE event.
+
+  LoRaLogPayload payload;
+
+  // Get current time
+  time_t now;
+  time(&now);
+  payload.timestamp = (uint32_t)now;
+
+  // Set success status
+  payload.success = isSuccess ? 1 : 0;
+
+  // Set username (and truncate)
+  // Clear the buffer with nulls
+  memset(payload.username, 0, sizeof(payload.username));
+  // Copy up to 7 chars to leave room for a null terminator
+  strncpy(payload.username, username.c_str(), sizeof(payload.username) - 1);
+
+  // Queue the packet
+  LMIC_setTxData2(1, (uint8_t *)&payload, sizeof(payload), 0);
+
+  Serial.printf("[INFO] Login log queued: User=%s, Success=%d, Time=%u\n",
+                payload.username, payload.success, payload.timestamp);
 }
 
 void onEvent(ev_t ev)
@@ -205,14 +240,11 @@ void onEvent(ev_t ev)
     // size, we don't use it in this example.
     LMIC_setLinkCheckMode(0);
     break;
-  /*
-  || This event is defined but not used in the code. No
-  || point in wasting codespace on it.
-  ||
-  || case EV_RFU1:
-  ||     Serial.println(F("EV_RFU1"));
-  ||     break;
-  */
+
+  case EV_RFU1:
+    Serial.println(F("EV_RFU1"));
+    break;
+
   case EV_JOIN_FAILED:
     Serial.println(F("EV_JOIN_FAILED"));
     break;
@@ -230,7 +262,7 @@ void onEvent(ev_t ev)
       Serial.println(F(" bytes of payload"));
     }
     // Schedule next transmission
-    os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
+    // os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
     break;
   case EV_LOST_TSYNC:
     Serial.println(F("EV_LOST_TSYNC"));
@@ -248,14 +280,9 @@ void onEvent(ev_t ev)
   case EV_LINK_ALIVE:
     Serial.println(F("EV_LINK_ALIVE"));
     break;
-  /*
-  || This event is defined but not used in the code. No
-  || point in wasting codespace on it.
-  ||
-  || case EV_SCAN_FOUND:
-  ||    Serial.println(F("EV_SCAN_FOUND"));
-  ||    break;
-  */
+  case EV_SCAN_FOUND:
+    Serial.println(F("EV_SCAN_FOUND"));
+    break;
   case EV_TXSTART:
     Serial.println(F("EV_TXSTART"));
     break;
@@ -273,6 +300,28 @@ void onEvent(ev_t ev)
     Serial.print(F("Unknown event: "));
     Serial.println((unsigned)ev);
     break;
+  }
+}
+
+void initNTP()
+{
+  Serial.println("Configuring time from NTP...");
+  // Use configTzTime for automatic DST handling
+  configTzTime(tzInfo, ntpServer);
+
+  Serial.println("Waiting for time synchronization...");
+
+  // Wait until time is synchronized
+  struct tm timeinfo;
+  // 10-second timeout
+  if (!getLocalTime(&timeinfo, 10000))
+  {
+    Serial.println("Failed to obtain time from NTP.");
+  }
+  else
+  {
+    Serial.println("Time synchronized successfully.");
+    Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S %Z");
   }
 }
 
@@ -374,9 +423,11 @@ void setupWebServer()
 
       if (user == roomUsername && pass == roomPassword) {
         loginSuccessTrigger = true;
+        sendLoginAttemptLog(user, true);
         request->send(200, "text/plain", "Login Successful! Door opening.");
       } else {
         loginFailTrigger = true;
+        sendLoginAttemptLog(user, false);
         
         int attemptsLeft = MAX_FAILED_ATTEMPTS - (incorrectAttempts + 1);
         if (attemptsLeft <= 0) {
@@ -496,23 +547,15 @@ void setup()
   }
 
   connectToWifi();
+  initNTP();
 
   setupWebServer();
 
   // --- LoRaWAN Setup ---
-  // #ifdef VCC_ENABLE
-  //   // For Pinoccio Scout boards
-  //   pinMode(VCC_ENABLE, OUTPUT);
-  //   digitalWrite(VCC_ENABLE, HIGH);
-  //   delay(1000);
-  // #endif
-
-  // // LMIC init
-  // os_init();
-  // // Reset the MAC state. Session and pending data transfers will be discarded.
-  // LMIC_reset();
-  // // Start job (sending automatically starts OTAA too)
-  // do_send(&sendjob);
+  os_init();    // LMIC init
+  LMIC_reset(); // Reset the MAC state. Session and pending data transfers will be discarded.
+  Serial.println("[INFO] Queuing LoRaWAN startup message...");
+  sendLoginAttemptLog("system", true);
 
   closeDoor(); // Ensure door is closed at startup
 
@@ -736,7 +779,7 @@ void TickFct_RoomAccess()
 
 void loop()
 {
-  // os_runloop_once();
+  os_runloop_once();
 
   // --- Non-blocking state machine tick ---
   if (RA_Tick)
@@ -788,8 +831,8 @@ void loop()
     }
 
     // Uncomment for debugging
-    Serial.printf("Raw: %d, Volt: %.2fV, Dist: %.1fcm, Nearby: %s\n",
-                  avgRaw, voltage, currentDistanceCm, isPersonNearby ? "YES" : "NO");
+    // Serial.printf("Raw: %d, Volt: %.2fV, Dist: %.1fcm, Nearby: %s\n",
+    //               avgRaw, voltage, currentDistanceCm, isPersonNearby ? "YES" : "NO");
     // Serial.print("proxReadings: [");
     // for (int i = 0; i < PROX_NUM_READINGS; ++i)
     // {
