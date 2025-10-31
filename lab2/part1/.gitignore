@@ -5,4 +5,4 @@
 .vscode/ipch
 
 # Env Variables
-include/credentials.h
+credentials.h
