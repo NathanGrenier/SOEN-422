@@ -4,6 +4,9 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ESP32Servo.h>
+#include <lmic.h>
+#include <hal/hal.h>
+#include <SPI.h>
 
 #include "credentials.h"
 
@@ -21,10 +24,16 @@ const char *ADMIN_PASSWORD = ADMIN_PASSWORD_CREDENTIALS;
 const char *ADMIN_REALM = "Admin Panel";
 
 // --- Hardware Pin Definitions ---
-const unsigned char SERVO_DATA_PIN = 26;     // yellow wire
+const unsigned char SERVO_DATA_PIN = 19;     // yellow wire
 const unsigned char PROXIMITY_DATA_PIN = 34; // white wire
 const unsigned char GREEN_LED_PIN = 14;      // white wire
 const unsigned char RED_LED_PIN = 12;        // blue wire
+const lmic_pinmap lmic_pins = {
+    .nss = 18,
+    .rxtx = LMIC_UNUSED_PIN,
+    .rst = 23,
+    .dio = {/*dio0*/ 26, /*dio1*/ 33, /*dio2*/ 32},
+};
 
 // --- Global Variables ---
 const unsigned char PORT = 80;
@@ -47,10 +56,10 @@ const unsigned short SERVO_DOOR_OPEN_POS = 90;  // Degrees
 const int ADC_MAX = 4095;                        // ESP32 12-bit ADC
 const float ADC_VREF = 3.3;                      // ESP32 ADC reference voltage
 const int PROX_NUM_READINGS = 10;                // Number of samples for averaging
-const int PROX_READING_DELAY_US = 53000;         // 53ms delay between samples
-const unsigned long PROX_READ_INTERVAL_MS = 600; // Read sensor every 600ms
+const int PROX_READING_DELAY_US = 50000;         // 50ms delay between samples
+const unsigned long PROX_READ_INTERVAL_MS = 500; // Read sensor every 500ms
 
-const float PROXIMITY_THRESHOLD_CM = 40.0; // If distance < this, someone is "nearby"
+const float PROXIMITY_THRESHOLD_CM = 50.0; // If distance < this, someone is "nearby"
 const float VOLTAGE_MIN_FOR_RANGE = 0.40;  // Corresponds to ~150cm. Below this is "out of range"
 const float VOLTAGE_MAX_FOR_RANGE = 2.80;  // Corresponds to ~15-20cm. Above this is "very close"
 
@@ -101,6 +110,171 @@ unsigned long stateTimer = 0;
 
 volatile bool loginSuccessTrigger = false;
 volatile bool loginFailTrigger = false;
+
+// --- LoRaWAN Variables and Setup ---
+static const u1_t PROGMEM APPEUI[8] = APP_EUI;
+void os_getArtEui(u1_t *buf) { memcpy_P(buf, APPEUI, 8); }
+
+static const u1_t PROGMEM DEVEUI[8] = DEV_EUI;
+void os_getDevEui(u1_t *buf) { memcpy_P(buf, DEVEUI, 8); }
+
+static const u1_t PROGMEM APPKEY[16] = APP_KEY;
+void os_getDevKey(u1_t *buf) { memcpy_P(buf, APPKEY, 16); }
+
+static uint8_t mydata[] = "Hello, world!";
+static osjob_t sendjob;
+
+const unsigned TX_INTERVAL = 60; // in seconds
+
+void printHex2(unsigned v)
+{
+  v &= 0xff;
+  if (v < 16)
+    Serial.print('0');
+  Serial.print(v, HEX);
+}
+
+void do_send(osjob_t *j)
+{
+  // Check if there is not a current TX/RX job running
+  if (LMIC.opmode & OP_TXRXPEND)
+  {
+    Serial.println(F("OP_TXRXPEND, not sending"));
+  }
+  else
+  {
+    // Prepare upstream data transmission at the next possible time.
+    LMIC_setTxData2(1, mydata, sizeof(mydata) - 1, 0);
+    Serial.println(F("Packet queued"));
+  }
+  // Next TX is scheduled after TX_COMPLETE event.
+}
+
+void onEvent(ev_t ev)
+{
+  Serial.print(os_getTime());
+  Serial.print(": ");
+  switch (ev)
+  {
+  case EV_SCAN_TIMEOUT:
+    Serial.println(F("EV_SCAN_TIMEOUT"));
+    break;
+  case EV_BEACON_FOUND:
+    Serial.println(F("EV_BEACON_FOUND"));
+    break;
+  case EV_BEACON_MISSED:
+    Serial.println(F("EV_BEACON_MISSED"));
+    break;
+  case EV_BEACON_TRACKED:
+    Serial.println(F("EV_BEACON_TRACKED"));
+    break;
+  case EV_JOINING:
+    Serial.println(F("EV_JOINING"));
+    break;
+  case EV_JOINED:
+    Serial.println(F("EV_JOINED"));
+    {
+      u4_t netid = 0;
+      devaddr_t devaddr = 0;
+      u1_t nwkKey[16];
+      u1_t artKey[16];
+      LMIC_getSessionKeys(&netid, &devaddr, nwkKey, artKey);
+      Serial.print("netid: ");
+      Serial.println(netid, DEC);
+      Serial.print("devaddr: ");
+      Serial.println(devaddr, HEX);
+      Serial.print("AppSKey: ");
+      for (size_t i = 0; i < sizeof(artKey); ++i)
+      {
+        if (i != 0)
+          Serial.print("-");
+        printHex2(artKey[i]);
+      }
+      Serial.println("");
+      Serial.print("NwkSKey: ");
+      for (size_t i = 0; i < sizeof(nwkKey); ++i)
+      {
+        if (i != 0)
+          Serial.print("-");
+        printHex2(nwkKey[i]);
+      }
+      Serial.println();
+    }
+    // Disable link check validation (automatically enabled
+    // during join, but because slow data rates change max TX
+    // size, we don't use it in this example.
+    LMIC_setLinkCheckMode(0);
+    break;
+  /*
+  || This event is defined but not used in the code. No
+  || point in wasting codespace on it.
+  ||
+  || case EV_RFU1:
+  ||     Serial.println(F("EV_RFU1"));
+  ||     break;
+  */
+  case EV_JOIN_FAILED:
+    Serial.println(F("EV_JOIN_FAILED"));
+    break;
+  case EV_REJOIN_FAILED:
+    Serial.println(F("EV_REJOIN_FAILED"));
+    break;
+  case EV_TXCOMPLETE:
+    Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
+    if (LMIC.txrxFlags & TXRX_ACK)
+      Serial.println(F("Received ack"));
+    if (LMIC.dataLen)
+    {
+      Serial.print(F("Received "));
+      Serial.print(LMIC.dataLen);
+      Serial.println(F(" bytes of payload"));
+    }
+    // Schedule next transmission
+    os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
+    break;
+  case EV_LOST_TSYNC:
+    Serial.println(F("EV_LOST_TSYNC"));
+    break;
+  case EV_RESET:
+    Serial.println(F("EV_RESET"));
+    break;
+  case EV_RXCOMPLETE:
+    // data received in ping slot
+    Serial.println(F("EV_RXCOMPLETE"));
+    break;
+  case EV_LINK_DEAD:
+    Serial.println(F("EV_LINK_DEAD"));
+    break;
+  case EV_LINK_ALIVE:
+    Serial.println(F("EV_LINK_ALIVE"));
+    break;
+  /*
+  || This event is defined but not used in the code. No
+  || point in wasting codespace on it.
+  ||
+  || case EV_SCAN_FOUND:
+  ||    Serial.println(F("EV_SCAN_FOUND"));
+  ||    break;
+  */
+  case EV_TXSTART:
+    Serial.println(F("EV_TXSTART"));
+    break;
+  case EV_TXCANCELED:
+    Serial.println(F("EV_TXCANCELED"));
+    break;
+  case EV_RXSTART:
+    /* do not print anything -- it wrecks timing */
+    break;
+  case EV_JOIN_TXCOMPLETE:
+    Serial.println(F("EV_JOIN_TXCOMPLETE: no JoinAccept"));
+    break;
+
+  default:
+    Serial.print(F("Unknown event: "));
+    Serial.println((unsigned)ev);
+    break;
+  }
+}
 
 void connectToWifi()
 {
@@ -325,6 +499,21 @@ void setup()
 
   setupWebServer();
 
+  // --- LoRaWAN Setup ---
+  // #ifdef VCC_ENABLE
+  //   // For Pinoccio Scout boards
+  //   pinMode(VCC_ENABLE, OUTPUT);
+  //   digitalWrite(VCC_ENABLE, HIGH);
+  //   delay(1000);
+  // #endif
+
+  // // LMIC init
+  // os_init();
+  // // Reset the MAC state. Session and pending data transfers will be discarded.
+  // LMIC_reset();
+  // // Start job (sending automatically starts OTAA too)
+  // do_send(&sendjob);
+
   closeDoor(); // Ensure door is closed at startup
 
   // Initialize State Machine Timer ---
@@ -547,6 +736,8 @@ void TickFct_RoomAccess()
 
 void loop()
 {
+  // os_runloop_once();
+
   // --- Non-blocking state machine tick ---
   if (RA_Tick)
   {
@@ -599,14 +790,13 @@ void loop()
     // Uncomment for debugging
     Serial.printf("Raw: %d, Volt: %.2fV, Dist: %.1fcm, Nearby: %s\n",
                   avgRaw, voltage, currentDistanceCm, isPersonNearby ? "YES" : "NO");
-
-    Serial.print("proxReadings: [");
-    for (int i = 0; i < PROX_NUM_READINGS; ++i)
-    {
-      Serial.print(proxReadings[i]);
-      if (i < PROX_NUM_READINGS - 1)
-        Serial.print(", ");
-    }
-    Serial.println("]");
+    // Serial.print("proxReadings: [");
+    // for (int i = 0; i < PROX_NUM_READINGS; ++i)
+    // {
+    //   Serial.print(proxReadings[i]);
+    //   if (i < PROX_NUM_READINGS - 1)
+    //     Serial.print(", ");
+    // }
+    // Serial.println("]");
   }
 }
