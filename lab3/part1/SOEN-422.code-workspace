@@ -1,0 +1,41 @@
+{
+  "folders": [
+    {
+      "path": "../.."
+    },
+    {
+      "name": "part1",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.associations": {
+      "*.yaml": "yaml",
+      "iostream": "cpp",
+      "array": "cpp",
+      "span": "cpp",
+      "vector": "cpp",
+      "xstring": "cpp",
+      "xutility": "cpp",
+      "string": "cpp",
+      "string_view": "cpp"
+    },
+    "cSpell.words": [
+      "bblanchon",
+      "BLEUUID",
+      "BLUEDROID",
+      "espressif",
+      "freenove",
+      "Hitec",
+      "IRAM",
+      "madhephaestus",
+      "Pinout",
+      "rgba",
+      "Roboto",
+      "Segoe",
+      "Sien",
+      "ttgo",
+      "wroom"
+    ]
+  }
+}
