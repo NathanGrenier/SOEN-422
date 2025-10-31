@@ -16,20 +16,21 @@ String roomUsername = ROOM_USERNAME;
 String roomPassword = ROOM_PASSWORD;
 
 // --- Admin Access Credentials ---
-
 const char *ADMIN_USERNAME = ADMIN_USERNAME_CREDENTIALS;
 const char *ADMIN_PASSWORD = ADMIN_PASSWORD_CREDENTIALS;
 const char *ADMIN_REALM = "Admin Panel";
 
 // --- Hardware Pin Definitions ---
-const unsigned char SERVO_DATA_PIN = 26; // yellow wire
-const unsigned char GREEN_LED_PIN = 14;  // white wire
-const unsigned char RED_LED_PIN = 12;    // blue wire
+const unsigned char SERVO_DATA_PIN = 26;     // yellow wire
+const unsigned char PROXIMITY_DATA_PIN = 34; // white wire
+const unsigned char GREEN_LED_PIN = 14;      // white wire
+const unsigned char RED_LED_PIN = 12;        // blue wire
 
 // --- Global Variables ---
 const unsigned char PORT = 80;
 AsyncWebServer server(PORT);
 
+// --- Servo Configuration ---
 Servo servo;
 const unsigned char SERVO_TIMER_ID = 0;
 const unsigned char SERVO_PERIOD = 50; // in Hz
@@ -39,6 +40,28 @@ const unsigned short SERVO_MAX = 2100;
 
 const unsigned short SERVO_DOOR_CLOSED_POS = 0; // Degrees
 const unsigned short SERVO_DOOR_OPEN_POS = 90;  // Degrees
+
+// --- Distance Sensor Variables ---
+// Sharp GP2Y0A02 datasheet: https://global.sharp/products/device/lineup/data/pdf/datasheet/gp2y0a02yk_e.pdf
+// ESP32 ADC Docs: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/adc/index.html
+const int ADC_MAX = 4095;                        // ESP32 12-bit ADC
+const float ADC_VREF = 3.3;                      // ESP32 ADC reference voltage
+const int PROX_NUM_READINGS = 10;                // Number of samples for averaging
+const int PROX_READING_DELAY_US = 53000;         // 53ms delay between samples
+const unsigned long PROX_READ_INTERVAL_MS = 600; // Read sensor every 600ms
+
+const float PROXIMITY_THRESHOLD_CM = 40.0; // If distance < this, someone is "nearby"
+const float VOLTAGE_MIN_FOR_RANGE = 0.40;  // Corresponds to ~150cm. Below this is "out of range"
+const float VOLTAGE_MAX_FOR_RANGE = 2.80;  // Corresponds to ~15-20cm. Above this is "very close"
+
+int proxReadings[PROX_NUM_READINGS];
+int proxReadingIndex = 0;
+long proxReadingTotal = 0;
+unsigned long lastProxSampleTimeUs = 0;
+
+unsigned long lastProxReadTime = 0;
+float currentDistanceCm = -1.0; // -1.0 for unknown/out of range
+volatile bool isPersonNearby = false;
 
 // --- Login & Lockout Logic Variables ---
 volatile int incorrectAttempts = 0;
@@ -290,6 +313,14 @@ void setup()
   servo.setPeriodHertz(SERVO_PERIOD);
   servo.attach(SERVO_DATA_PIN, SERVO_MIN, SERVO_MAX);
 
+  // --- Proximity Sensor Setup ---
+  pinMode(PROXIMITY_DATA_PIN, INPUT);
+  // Initialize rolling average array
+  for (int i = 0; i < PROX_NUM_READINGS; i++)
+  {
+    proxReadings[i] = 0;
+  }
+
   connectToWifi();
 
   setupWebServer();
@@ -337,6 +368,47 @@ void clearLEDIndicators()
 {
   digitalWrite(GREEN_LED_PIN, LOW);
   digitalWrite(RED_LED_PIN, LOW);
+}
+
+/**
+ * @brief Converts a raw ADC value (0-4095) to a voltage (0-3.3V).
+ * @param rawValue The raw ADC value.
+ * @return The corresponding voltage.
+ */
+float rawToVoltage(int rawValue)
+{
+  return (rawValue / (float)ADC_MAX) * ADC_VREF;
+}
+
+/**
+ * @brief Converts sensor voltage to distance in cm.
+ * Based on fitting the inverse-distance-to-voltage graph from the datasheet.
+ * Formula: L = 48.96 / (V - 0.152)
+ * This formula is valid for the 20cm-150cm range.
+ * @param voltage The sensor output voltage.
+ * @return Distance in cm, or -1.0 if out of the reliable range.
+ */
+float voltageToDistanceCm(float voltage)
+{
+  if (voltage < VOLTAGE_MIN_FOR_RANGE)
+  {
+    return -1.0; // Out of range (> 150cm)
+  }
+
+  if (voltage > VOLTAGE_MAX_FOR_RANGE)
+  {
+    return 15.0; // Very close (< 20cm) - return a fixed "close" value
+  }
+
+  float distance = 48.96 / (voltage - 0.152);
+
+  // Clamp to the sensor's effective range
+  if (distance < 20.0)
+    return 20.0;
+  if (distance > 150.0)
+    return 150.0;
+
+  return distance;
 }
 
 void TickFct_RoomAccess()
@@ -475,10 +547,66 @@ void TickFct_RoomAccess()
 
 void loop()
 {
-  // Non-blocking state machine tick
+  // --- Non-blocking state machine tick ---
   if (RA_Tick)
   {
     RA_Tick = false;
     TickFct_RoomAccess();
+  }
+
+  // --- Non-blocking Proximity Sampling ---
+  if (micros() - lastProxSampleTimeUs >= PROX_READING_DELAY_US)
+  {
+    lastProxSampleTimeUs = micros();
+
+    // Subtract the oldest reading from the total
+    proxReadingTotal -= proxReadings[proxReadingIndex];
+
+    // Take a new reading and add it to the total
+    int newReading = analogRead(PROXIMITY_DATA_PIN);
+    proxReadings[proxReadingIndex] = newReading;
+    proxReadingTotal += newReading;
+
+    proxReadingIndex++;
+    // Wrap around the index if needed
+    if (proxReadingIndex >= PROX_NUM_READINGS)
+    {
+      proxReadingIndex = 0;
+    }
+  }
+
+  // --- Non-blocking Proximity Calculation ---
+  if (millis() - lastProxReadTime >= PROX_READ_INTERVAL_MS)
+  {
+    lastProxReadTime = millis();
+
+    // Calculate the average from the rolling total
+    int avgRaw = proxReadingTotal / PROX_NUM_READINGS;
+
+    float voltage = rawToVoltage(avgRaw);
+    currentDistanceCm = voltageToDistanceCm(voltage);
+
+    // Update the nearby flag
+    if (currentDistanceCm > 0 && currentDistanceCm < PROXIMITY_THRESHOLD_CM)
+    {
+      isPersonNearby = true;
+    }
+    else
+    {
+      isPersonNearby = false;
+    }
+
+    // Uncomment for debugging
+    Serial.printf("Raw: %d, Volt: %.2fV, Dist: %.1fcm, Nearby: %s\n",
+                  avgRaw, voltage, currentDistanceCm, isPersonNearby ? "YES" : "NO");
+
+    Serial.print("proxReadings: [");
+    for (int i = 0; i < PROX_NUM_READINGS; ++i)
+    {
+      Serial.print(proxReadings[i]);
+      if (i < PROX_NUM_READINGS - 1)
+        Serial.print(", ");
+    }
+    Serial.println("]");
   }
 }
