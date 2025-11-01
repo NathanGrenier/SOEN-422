@@ -1,5 +1,8 @@
 #pragma once
 
+// Only Send LoRaWAN Logs if Enabled
+#define LORAWAN_LOGGING_ENABLED 1
+
 // Lab WiFi Credentials
 #define WIFI_SSID "YOUR_SSID"
 #define WIFI_PASSWORD "YOUR_PASSWORD"

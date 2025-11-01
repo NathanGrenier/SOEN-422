@@ -371,6 +371,47 @@ bool isLockedOut()
   return RA_State == LOCKED_OUT || RA_State == LOCKED_OUT_WAIT;
 }
 
+/**
+ * @brief Converts a raw ADC value (0-4095) to a voltage (0-3.3V).
+ * @param rawValue The raw ADC value.
+ * @return The corresponding voltage.
+ */
+float rawToVoltage(int rawValue)
+{
+  return (rawValue / (float)ADC_MAX) * ADC_VREF;
+}
+
+/**
+ * @brief Converts sensor voltage to distance in cm.
+ * Based on fitting the inverse-distance-to-voltage graph from the datasheet.
+ * Formula: L = 48.96 / (V - 0.152)
+ * This formula is valid for the 20cm-150cm range.
+ * @param voltage The sensor output voltage.
+ * @return Distance in cm, or -1.0 if out of the reliable range.
+ */
+float voltageToDistanceCm(float voltage)
+{
+  if (voltage < VOLTAGE_MIN_FOR_RANGE)
+  {
+    return -1.0; // Out of range (> 150cm)
+  }
+
+  if (voltage > VOLTAGE_MAX_FOR_RANGE)
+  {
+    return 15.0; // Very close (< 20cm) - return a fixed "close" value
+  }
+
+  float distance = 48.96 / (voltage - 0.152);
+
+  // Clamp to the sensor's effective range
+  if (distance < 20.0)
+    return 20.0;
+  if (distance > 150.0)
+    return 150.0;
+
+  return distance;
+}
+
 void setupWebServer()
 {
   // --- Serve static files from SPIFFS ---
@@ -412,6 +453,16 @@ void setupWebServer()
   // --- Handle API Requests ---
   server.on("/login", HTTP_POST, [](AsyncWebServerRequest *request)
             {
+    Serial.println("\n[INFO] Login attempt received.");
+    // Calculate the current average raw value from the total
+    int avgRaw = proxReadingTotal / PROX_NUM_READINGS;
+    // Print the sensor's current state
+    Serial.printf("[INFO] Proximity Data | Raw: %d, Volt: %.2fV, Dist: %.1fcm, Nearby: %s\n",
+                  avgRaw,
+                  rawToVoltage(avgRaw),
+                  currentDistanceCm,
+                  isPersonNearby ? "YES" : "NO");
+    
     if (isLockedOut()) {
       request->send(403, "text/plain", "Locked out. Try again later.");
       return;
@@ -424,7 +475,13 @@ void setupWebServer()
       if (user == roomUsername && pass == roomPassword) {
         loginSuccessTrigger = true;
         sendLoginAttemptLog(user, true);
-        request->send(200, "text/plain", "Login Successful! Door opening.");
+        if (isPersonNearby) {
+          // REQ: Correct creds + Person detected
+          request->send(200, "text/plain", "Login Successful! Door opening.");
+        } else {
+          // REQ: Correct creds + NO Person
+          request->send(401, "text/plain", "Login successful, but no person detected. Please stand closer.");
+        }
       } else {
         loginFailTrigger = true;
         sendLoginAttemptLog(user, false);
@@ -573,11 +630,31 @@ void setup()
   // Serial.printf("Free Heap: %u bytes, Max Contiguous Block: %u bytes\n", esp_get_free_heap_size(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 }
 
+void attachServo()
+{
+  if (!servo.attached())
+  {
+    servo.attach(SERVO_DATA_PIN, SERVO_MIN, SERVO_MAX);
+    Serial.println("[INFO] Servo attached.");
+  }
+}
+
+void detachServo()
+{
+  if (servo.attached())
+  {
+    servo.detach();
+    Serial.println("[INFO] Servo detached.");
+  }
+}
+
 void openDoor()
 {
   Serial.println("[INFO] Opening door...");
   digitalWrite(GREEN_LED_PIN, HIGH);
   digitalWrite(RED_LED_PIN, LOW);
+
+  // attachServo();
   servo.write(SERVO_DOOR_OPEN_POS);
 }
 
@@ -586,6 +663,8 @@ void closeDoor()
   Serial.println("[INFO] Closing door...");
   digitalWrite(GREEN_LED_PIN, LOW);
   digitalWrite(RED_LED_PIN, LOW);
+
+  // attachServo();
   servo.write(SERVO_DOOR_CLOSED_POS);
 }
 
@@ -602,47 +681,6 @@ void clearLEDIndicators()
   digitalWrite(RED_LED_PIN, LOW);
 }
 
-/**
- * @brief Converts a raw ADC value (0-4095) to a voltage (0-3.3V).
- * @param rawValue The raw ADC value.
- * @return The corresponding voltage.
- */
-float rawToVoltage(int rawValue)
-{
-  return (rawValue / (float)ADC_MAX) * ADC_VREF;
-}
-
-/**
- * @brief Converts sensor voltage to distance in cm.
- * Based on fitting the inverse-distance-to-voltage graph from the datasheet.
- * Formula: L = 48.96 / (V - 0.152)
- * This formula is valid for the 20cm-150cm range.
- * @param voltage The sensor output voltage.
- * @return Distance in cm, or -1.0 if out of the reliable range.
- */
-float voltageToDistanceCm(float voltage)
-{
-  if (voltage < VOLTAGE_MIN_FOR_RANGE)
-  {
-    return -1.0; // Out of range (> 150cm)
-  }
-
-  if (voltage > VOLTAGE_MAX_FOR_RANGE)
-  {
-    return 15.0; // Very close (< 20cm) - return a fixed "close" value
-  }
-
-  float distance = 48.96 / (voltage - 0.152);
-
-  // Clamp to the sensor's effective range
-  if (distance < 20.0)
-    return 20.0;
-  if (distance > 150.0)
-    return 150.0;
-
-  return distance;
-}
-
 void TickFct_RoomAccess()
 {
   // --- State Transitions ---
@@ -653,7 +691,18 @@ void TickFct_RoomAccess()
     {
       loginSuccessTrigger = false;
       incorrectAttempts = 0;
-      RA_State = DOOR_OPENING;
+
+      if (isPersonNearby)
+      {
+        // REQ: Correct creds + Person detected = GREEN LED + Open Door
+        RA_State = DOOR_OPENING;
+      }
+      else
+      {
+        // REQ: Correct creds + NO Person = RED LED
+        // We transition to FAILED_ATTEMPT to show the red light, but we dont't incremented incorrectAttempts.
+        RA_State = FAILED_ATTEMPT;
+      }
     }
     else if (loginFailTrigger)
     {
@@ -666,6 +715,7 @@ void TickFct_RoomAccess()
       }
       else
       {
+        // REQ: Incorrect creds + (Person OR NO Person) = RED LED
         RA_State = FAILED_ATTEMPT;
       }
     }
@@ -732,6 +782,8 @@ void TickFct_RoomAccess()
   switch (RA_State)
   {
   case IDLE:
+    // detachServo();
+
     // Clear remaining time just in case
     if (remainingLockoutTimeMs > 0)
     {
