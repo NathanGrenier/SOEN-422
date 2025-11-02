@@ -22,7 +22,7 @@ const char *ADMIN_PASSWORD = ADMIN_PASSWORD_CREDENTIALS;
 const char *ADMIN_REALM = "Admin Panel";
 
 // --- Hardware Pin Definitions ---
-const unsigned char SERVO_DATA_PIN = 19; // yellow wire
+const unsigned char SERVO_DATA_PIN = 13; // yellow wire
 const unsigned char GREEN_LED_PIN = 14;  // white wire
 const unsigned char RED_LED_PIN = 12;    // blue wire
 
