@@ -25,7 +25,7 @@ const char *ADMIN_PASSWORD = ADMIN_PASSWORD_CREDENTIALS;
 const char *ADMIN_REALM = "Admin Panel";
 
 // --- Hardware Pin Definitions ---
-const unsigned char SERVO_DATA_PIN = 19;     // yellow wire
+const unsigned char SERVO_DATA_PIN = 13;     // yellow wire
 const unsigned char PROXIMITY_DATA_PIN = 34; // white wire
 const unsigned char GREEN_LED_PIN = 14;      // white wire
 const unsigned char RED_LED_PIN = 12;        // blue wire
@@ -630,31 +630,11 @@ void setup()
   // Serial.printf("Free Heap: %u bytes, Max Contiguous Block: %u bytes\n", esp_get_free_heap_size(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 }
 
-void attachServo()
-{
-  if (!servo.attached())
-  {
-    servo.attach(SERVO_DATA_PIN, SERVO_MIN, SERVO_MAX);
-    Serial.println("[INFO] Servo attached.");
-  }
-}
-
-void detachServo()
-{
-  if (servo.attached())
-  {
-    servo.detach();
-    Serial.println("[INFO] Servo detached.");
-  }
-}
-
 void openDoor()
 {
   Serial.println("[INFO] Opening door...");
   digitalWrite(GREEN_LED_PIN, HIGH);
   digitalWrite(RED_LED_PIN, LOW);
-
-  // attachServo();
   servo.write(SERVO_DOOR_OPEN_POS);
 }
 
@@ -663,8 +643,6 @@ void closeDoor()
   Serial.println("[INFO] Closing door...");
   digitalWrite(GREEN_LED_PIN, LOW);
   digitalWrite(RED_LED_PIN, LOW);
-
-  // attachServo();
   servo.write(SERVO_DOOR_CLOSED_POS);
 }
 
@@ -782,8 +760,6 @@ void TickFct_RoomAccess()
   switch (RA_State)
   {
   case IDLE:
-    // detachServo();
-
     // Clear remaining time just in case
     if (remainingLockoutTimeMs > 0)
     {
