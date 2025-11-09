@@ -48,6 +48,11 @@ jobs:
     if: needs.detect_changes.outputs.is_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: development
+    env:
+      DATABASE_URL: ${{ vars.DATABASE_URL }}
+      NODE_ENV: ${{ vars.NODE_ENV }}
+      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
     defaults:
       run:
         working-directory: iot-smart-bin/web
