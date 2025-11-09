@@ -3,7 +3,14 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 
+#ifdef CI
+// When building in a CI environment, use dummy credentials
+#define WIFI_SSID "DUMMY_SSID"
+#define WIFI_PASSWORD "DUMMY_PASSWORD"
+#else
+// For local builds, include the actual credentials file
 #include "credentials.h"
+#endif
 
 // --- WiFi Credentials ---
 const char *SSID = WIFI_SSID;

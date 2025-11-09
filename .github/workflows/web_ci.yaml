@@ -60,15 +60,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Cache node modules
-        uses: actions/cache@v4
-        with:
-          path: iot-smart-bin/web/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('iot-smart-bin/web/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          cache-dependency-path: iot-smart-bin/web/package-lock.json
 
       - name: Install deps
         run: npm ci
