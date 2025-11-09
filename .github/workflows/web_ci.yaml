@@ -1,0 +1,92 @@
+name: Web CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
+    branches: [main]
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: web_ci-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect_changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      is_changed: ${{ steps.changed-files.outputs.any_changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v47
+        with:
+          files: |
+            iot-smart-bin/web/**
+            .github/workflows/web_ci.yaml
+
+      - name: Log changed files
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          echo "Changes detected in the following files:"
+          echo "${{ steps.changed-files.outputs.all_changed_files }}"
+
+      - name: Log no changes
+        if: steps.changed-files.outputs.any_changed != 'true'
+        run: echo "No changes detected in backend files."
+
+  web_ci:
+    needs: detect_changes
+    if: needs.detect_changes.outputs.is_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: iot-smart-bin/web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: iot-smart-bin/web/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('iot-smart-bin/web/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Verify DB migrations
+        run: npm run db:check
+
+      - name: Generate DB migrations
+        run: npm run db:generate
+
+      - name: Apply DB migrations
+        run: npm run db:migrate
+
+      - name: Build
+        run: npm run build
