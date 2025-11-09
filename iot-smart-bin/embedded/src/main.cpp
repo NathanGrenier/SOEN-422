@@ -3,7 +3,7 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 
-#ifdef CI
+#ifdef CI_BUILD
 // When building in a CI environment, use dummy credentials
 #define WIFI_SSID "DUMMY_SSID"
 #define WIFI_PASSWORD "DUMMY_PASSWORD"

@@ -78,3 +78,5 @@ jobs:
       
       - name: Build PlatformIO Project
         run: pio run
+        env:
+          PLATFORMIO_BUILD_FLAGS: -DCI_BUILD
