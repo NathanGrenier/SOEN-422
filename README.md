@@ -6,7 +6,7 @@ This repository contains all coursework, lab exercises, and the final capstone p
 
 The primary work in this repository is the final capstone project, `iot-smart-bin`.
 
-[Click here to go directly to the project code, documentation, and setup instructions.]()
+[Click here to go directly to the project code, documentation, and setup instructions.](/iot-smart-bin/README.md)
 
 ## Repository Contents
 
