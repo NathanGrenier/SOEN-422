@@ -1,8 +1,13 @@
 # ♻️ IoT Smart Bin: SOEN 422 Course Project
 
-<!-- Add some badges here! e.g., Build Status, License -->
+ | Web CI Status                                                                                                                                                                       | Embedded CI Status                                                                                                                                                                                 | Web Deployment                                                                                                                                                                      |
+ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+ | [![Web CI](https://github.com/NathanGrenier/SOEN-422/actions/workflows/web_ci.yaml/badge.svg?branch=main)](https://github.com/NathanGrenier/SOEN-422/actions/workflows/web_ci.yaml) | [![Embedded CI](https://github.com/NathanGrenier/SOEN-422/actions/workflows/embedded_ci.yaml/badge.svg?branch=main)](https://github.com/NathanGrenier/SOEN-422/actions/workflows/embedded_ci.yaml) | [![Deploy](https://github.com/NathanGrenier/SOEN-422/actions/workflows/deploy.yaml/badge.svg?branch=main)](https://github.com/NathanGrenier/SOEN-422/actions/workflows/deploy.yaml) |
 
-Quick Links: Live Demo | Project Presentation Slides
+
+**Quick Links:** 
+- Live Demo 
+- Project Presentation Slides
 
 ## 📖 Project Overview
 
