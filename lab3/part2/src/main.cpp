@@ -474,13 +474,14 @@ void setupWebServer()
 
       if (user == roomUsername && pass == roomPassword) {
         loginSuccessTrigger = true;
-        sendLoginAttemptLog(user, true);
         if (isPersonNearby) {
           // REQ: Correct creds + Person detected
           request->send(200, "text/plain", "Login Successful! Door opening.");
+          sendLoginAttemptLog(user, true);
         } else {
           // REQ: Correct creds + NO Person
           request->send(401, "text/plain", "Login successful, but no person detected. Please stand closer.");
+          sendLoginAttemptLog(user, false);
         }
       } else {
         loginFailTrigger = true;
