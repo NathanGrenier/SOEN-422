@@ -1,6 +1,6 @@
 services:
   web:
-    image: ghcr.io/NathanGrenier/SOEN-422:latest
+    image: ghcr.io/NathanGrenier/soen-422:latest
     container_name: iot-smart-bin-web
     restart: unless-stopped
     env_file:
