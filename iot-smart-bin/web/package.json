@@ -10,7 +10,7 @@
     "test": "vitest run",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
-    "format": "prettier",
+    "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "drizzle-kit generate",
     "db:check": "drizzle-kit check",

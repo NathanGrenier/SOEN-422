@@ -1,11 +1,11 @@
-import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { createServerFn } from '@tanstack/react-start'
-import { db } from '@/db'
-import { desc } from 'drizzle-orm'
-import { todos } from '@/db/schema'
+import { createFileRoute, useRouter } from "@tanstack/react-router"
+import { createServerFn } from "@tanstack/react-start"
+import { db } from "@/db"
+import { desc } from "drizzle-orm"
+import { todos } from "@/db/schema"
 
 const getTodos = createServerFn({
-  method: 'GET',
+  method: "GET",
 }).handler(async () => {
   return await db.query.todos.findMany({
     orderBy: [desc(todos.createdAt)],
@@ -13,7 +13,7 @@ const getTodos = createServerFn({
 })
 
 const createTodo = createServerFn({
-  method: 'POST',
+  method: "POST",
 })
   .inputValidator((data: { title: string }) => data)
   .handler(async ({ data }) => {
@@ -21,7 +21,7 @@ const createTodo = createServerFn({
     return { success: true }
   })
 
-export const Route = createFileRoute('/demo/drizzle')({
+export const Route = createFileRoute("/demo/drizzle")({
   component: DemoDrizzle,
   loader: async () => await getTodos(),
 })
@@ -33,7 +33,7 @@ function DemoDrizzle() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const formData = new FormData(e.target as HTMLFormElement)
-    const title = formData.get('title') as string
+    const title = formData.get("title") as string
 
     if (!title) return
 
@@ -42,7 +42,7 @@ function DemoDrizzle() {
       router.invalidate()
       ;(e.target as HTMLFormElement).reset()
     } catch (error) {
-      console.error('Failed to create todo:', error)
+      console.error("Failed to create todo:", error)
     }
   }
 
@@ -51,23 +51,23 @@ function DemoDrizzle() {
       className="flex items-center justify-center min-h-screen p-4 text-white"
       style={{
         background:
-          'linear-gradient(135deg, #0c1a2b 0%, #1a2332 50%, #16202e 100%)',
+          "linear-gradient(135deg, #0c1a2b 0%, #1a2332 50%, #16202e 100%)",
       }}
     >
       <div
         className="w-full max-w-2xl p-8 rounded-xl shadow-2xl border border-white/10"
         style={{
           background:
-            'linear-gradient(135deg, rgba(22, 32, 46, 0.95) 0%, rgba(12, 26, 43, 0.95) 100%)',
-          backdropFilter: 'blur(10px)',
+            "linear-gradient(135deg, rgba(22, 32, 46, 0.95) 0%, rgba(12, 26, 43, 0.95) 100%)",
+          backdropFilter: "blur(10px)",
         }}
       >
         <div
           className="flex items-center justify-center gap-4 mb-8 p-4 rounded-lg"
           style={{
             background:
-              'linear-gradient(90deg, rgba(93, 103, 227, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)',
-            border: '1px solid rgba(93, 103, 227, 0.2)',
+              "linear-gradient(90deg, rgba(93, 103, 227, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)",
+            border: "1px solid rgba(93, 103, 227, 0.2)",
           }}
         >
           <div className="relative group">
@@ -94,8 +94,8 @@ function DemoDrizzle() {
               className="rounded-lg p-4 shadow-md border transition-all hover:scale-[1.02] cursor-pointer group"
               style={{
                 background:
-                  'linear-gradient(135deg, rgba(93, 103, 227, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%)',
-                borderColor: 'rgba(93, 103, 227, 0.3)',
+                  "linear-gradient(135deg, rgba(93, 103, 227, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%)",
+                borderColor: "rgba(93, 103, 227, 0.3)",
               }}
             >
               <div className="flex items-center justify-between">
@@ -120,17 +120,17 @@ function DemoDrizzle() {
             placeholder="Add a new todo..."
             className="flex-1 px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 transition-all text-white placeholder-indigo-300/50"
             style={{
-              background: 'rgba(93, 103, 227, 0.1)',
-              borderColor: 'rgba(93, 103, 227, 0.3)',
-              focusRing: 'rgba(93, 103, 227, 0.5)',
+              background: "rgba(93, 103, 227, 0.1)",
+              borderColor: "rgba(93, 103, 227, 0.3)",
+              focusRing: "rgba(93, 103, 227, 0.5)",
             }}
           />
           <button
             type="submit"
             className="px-6 py-3 font-semibold rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl hover:scale-105 active:scale-95 whitespace-nowrap"
             style={{
-              background: 'linear-gradient(135deg, #5d67e3 0%, #8b5cf6 100%)',
-              color: 'white',
+              background: "linear-gradient(135deg, #5d67e3 0%, #8b5cf6 100%)",
+              color: "white",
             }}
           >
             Add Todo
@@ -140,8 +140,8 @@ function DemoDrizzle() {
         <div
           className="mt-8 p-6 rounded-lg border"
           style={{
-            background: 'rgba(93, 103, 227, 0.05)',
-            borderColor: 'rgba(93, 103, 227, 0.2)',
+            background: "rgba(93, 103, 227, 0.05)",
+            borderColor: "rgba(93, 103, 227, 0.2)",
           }}
         >
           <h3 className="text-lg font-semibold mb-2 text-indigo-200">
@@ -154,26 +154,26 @@ function DemoDrizzle() {
             <p className="text-indigo-200 font-medium">Setup Instructions:</p>
             <ol className="list-decimal list-inside space-y-2 text-indigo-300/80">
               <li>
-                Configure your{' '}
+                Configure your{" "}
                 <code className="px-2 py-1 rounded bg-black/30 text-purple-300">
                   DATABASE_URL
-                </code>{' '}
+                </code>{" "}
                 in .env.local
               </li>
               <li>
-                Run:{' '}
+                Run:{" "}
                 <code className="px-2 py-1 rounded bg-black/30 text-purple-300">
                   npx drizzle-kit generate
                 </code>
               </li>
               <li>
-                Run:{' '}
+                Run:{" "}
                 <code className="px-2 py-1 rounded bg-black/30 text-purple-300">
                   npx drizzle-kit migrate
                 </code>
               </li>
               <li>
-                Optional:{' '}
+                Optional:{" "}
                 <code className="px-2 py-1 rounded bg-black/30 text-purple-300">
                   npx drizzle-kit studio
                 </code>
