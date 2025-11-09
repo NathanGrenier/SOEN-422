@@ -1,4 +1,4 @@
-name: Web CI
+name: Web CI & Deploy
 
 on:
   workflow_dispatch:
@@ -8,6 +8,10 @@ on:
   push:
     branches:
       - main
+
+env:
+  REGISTRY: ghcr.io
+  # The lowercase REPO name is set in the build job
 
 concurrency:
   group: web_ci-${{ github.event.pull_request.head.ref || github.ref }}
@@ -32,6 +36,8 @@ jobs:
           files: |
             iot-smart-bin/web/**
             .github/workflows/web_ci.yaml
+            Dockerfile
+            docker-entrypoint.sh
 
       - name: Log changed files
         if: steps.changed-files.outputs.any_changed == 'true'
@@ -87,3 +93,33 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  build-and-push:
+    name: Build and Push Docker Image
+    needs: web_ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase REPO Name (Needed for GHCR)
+        run: |
+          echo "REPO=${GITHUB_REPOSITORY@L}" >> "${GITHUB_ENV}"
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.REPO }}:latest
