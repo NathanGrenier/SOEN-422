@@ -36,8 +36,8 @@ jobs:
           files: |
             iot-smart-bin/web/**
             .github/workflows/web_ci.yaml
-            Dockerfile
-            docker-entrypoint.sh
+            iot-smart-bin/web/Dockerfile
+            iot-smart-bin/web/docker-entrypoint.sh
 
       - name: Log changed files
         if: steps.changed-files.outputs.any_changed == 'true'
@@ -120,6 +120,6 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: iot-smart-bin/web
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.REPO }}:latest
