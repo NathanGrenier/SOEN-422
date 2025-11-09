@@ -1,12 +1,13 @@
-# Start from a Node.js base image
-FROM node:18-alpine
-
-# Set the working directory
+# --- Build Stage ---
+FROM node:22-alpine AS build
 WORKDIR /app
 
-# Copy package files and install dependencies
+# Install build tools needed for native modules
+RUN apk add --no-cache python3 build-base sqlite-dev
+
+# Copy package files and install all dependencies (including dev)
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 # Copy the rest of your app code
 COPY . .
@@ -14,18 +15,27 @@ COPY . .
 # Build your TanStack Start app
 RUN npm run build
 
-# Create the directory where the database file will live
-# This is important for permissions
-RUN mkdir -p /app/data
+# Remove devDependencies to keep node_modules small for runtime
+RUN npm prune --production
 
-# Set permissions (optional but good practice)
-RUN chown -R node:node /app/data
+# --- Production Stage ---
+FROM node:22-alpine AS production
+WORKDIR /app
 
-# Switch to a non-root user (good security practice)
-USER node
+# Copy only necessary files from the build stage
+COPY --from=build /app/.output ./.output
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/drizzle.config.ts ./drizzle.config.ts
+COPY --from=build /app/drizzle ./drizzle
 
-# Expose the port your app runs on
+# Copy the entrypoint script and make it executable
+COPY docker-entrypoint.sh .
+RUN chmod +x docker-entrypoint.sh
+
+ENV NODE_ENV=production
+
 EXPOSE 3000
 
-# The command to start your app
-CMD ["npm", "run", "start"]
+# Use the entrypoint script to start the container
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
