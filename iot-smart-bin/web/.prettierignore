@@ -3,4 +3,5 @@ pnpm-lock.yaml
 yarn.lock
 
 docker-compose.yaml
+routeTree.gen.ts
 drizzle/
