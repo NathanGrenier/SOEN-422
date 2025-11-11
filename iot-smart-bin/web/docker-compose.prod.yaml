@@ -1,0 +1,56 @@
+services:
+  web:
+    image: ghcr.io/nathangrenier/soen-422:latest
+    container_name: iot-smart-bin-web
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    volumes:
+      - ./db:/app/db
+    networks:
+      - app_network
+    ports:
+      - "3000:3000"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto
+    restart: unless-stopped
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto/config/passwd:/mosquitto/config/passwd
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+    networks:
+      - app_network
+    ports:
+      # WebSocket Port 
+      - "9001:9001" 
+      # Standard MQTT port for local testing
+      - "1883:1883" 
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    command:
+      - "--label-enable"
+      - "--interval"
+      - "120"
+      - "--rolling-restart"
+      - "--cleanup"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "/home/nathan/.docker/config.json:/config.json"
+    networks:
+      - app_network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+
+networks:
+  app_network:
+    driver: bridge

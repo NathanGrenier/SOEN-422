@@ -11,6 +11,8 @@ count.txt
 .output
 .vinxi
 todos.json
+.vscode/
+*.log
 
 # Ignore local database files
 /db/*.sqlite
@@ -21,3 +23,8 @@ todos.json
 .env.local
 .env.production
 .env.production.local
+
+# Mosquitto files
+/mosquitto/data/
+/mosquitto/log/
+mosquitto/config/passwd
