@@ -1,7 +1,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
+#include <ArduinoMqttClient.h>
+
+#include "api_config.h"
 
 #ifdef CI_BUILD
 // When building in a CI environment, use dummy credentials
@@ -17,8 +18,11 @@ const char *SSID = WIFI_SSID;
 const char *PASSWORD = WIFI_PASSWORD;
 
 // --- Global Variables ---
-const unsigned char PORT = 80;
-AsyncWebServer server(PORT);
+
+// #if defined(DEVELOPMENT_BUILD)
+// #elif defined(PRODUCTION_BUILD)
+// #else
+// #endif
 
 void connectToWifi()
 {
@@ -51,39 +55,6 @@ void connectToWifi()
   Serial.println(WiFi.localIP());
 }
 
-void setupWebServer()
-{
-  // --- Serve static files from SPIFFS ---
-  // server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-  //           {
-  //   if (isLockedOut()) {
-  //     request->redirect("/cooldown.html");
-  //   } else {
-  //     request->send(SPIFFS, "/index.html", "text/html");
-  //   } });
-
-  // server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request)
-  //           { request->send(SPIFFS, "/script.js", "text/javascript"); });
-
-  // --- Handle API Requests ---
-  // server.on("/cooldown-time", HTTP_GET, [](AsyncWebServerRequest *request)
-  //           {
-  //   Serial.println("[INFO] Cooldown time requested: " + String(remainingLockoutTimeMs) + " ms remaining.");
-  //   if (isLockedOut()) {
-  //     request->send(200, "text/plain", String(remainingLockoutTimeMs));
-  //   } else {
-  //     // Not locked out, send 0
-  //     request->send(200, "text/plain", "0");
-  //   } });
-
-  // --- Other Paths ---
-  server.onNotFound([](AsyncWebServerRequest *request)
-                    { request->redirect("/"); });
-
-  server.begin();
-  Serial.println(String("HTTP server started: Accessible at http://") + WiFi.localIP().toString() + ":" + String(PORT));
-}
-
 void setup()
 {
   // Wait for Serial to be ready
@@ -94,8 +65,6 @@ void setup()
   }
 
   connectToWifi();
-
-  setupWebServer();
 }
 
 void loop()

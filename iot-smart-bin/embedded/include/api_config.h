@@ -1,9 +1,11 @@
 #pragma once
 
+#include "credentials.h"
+
 namespace Api
 {
     // Base URL for the API
-    constexpr const char *BASE_URL = "https://iotjukebox.onrender.com";
+    constexpr const char *BASE_URL = WEB_URL;
 
     // API Endpoints
     namespace Endpoints
