@@ -1,14 +1,14 @@
-import { createFileRoute } from "@tanstack/react-router";
 import {
   AlertTriangle,
   Battery,
   CircleX,
   MapPin,
-  RadioTower,
   Radio,
+  RadioTower,
   Wifi,
   WifiOff,
 } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

@@ -1,8 +1,8 @@
-import { Link, createFileRoute } from "@tanstack/react-router"
+import { Link, createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/demo/start/ssr/")({
   component: RouteComponent,
-})
+});
 
 function RouteComponent() {
   return (
@@ -39,5 +39,5 @@ function RouteComponent() {
         </div>
       </div>
     </div>
-  )
+  );
 }

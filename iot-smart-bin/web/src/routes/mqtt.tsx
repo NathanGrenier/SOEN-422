@@ -1,35 +1,35 @@
-import { createFileRoute } from "@tanstack/react-router"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { getMqttStatus, publishMqttMessage } from "@/server/mqtt"
+import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getMqttStatus, publishMqttMessage } from "@/server/mqtt";
 
 export const Route = createFileRoute("/mqtt")({
   component: MqttComponent,
-})
+});
 
 function MqttComponent() {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
 
   const { data, error, isLoading } = useQuery({
     queryKey: ["mqttStatus"],
     queryFn: () => getMqttStatus(),
     refetchInterval: 2000, // Poll for updates every 2 seconds
-  })
+  });
 
   const mutation = useMutation({
     mutationFn: publishMqttMessage,
     onSuccess: () => {
       // After publishing, invalidate the query to refetch status and messages
-      queryClient.invalidateQueries({ queryKey: ["mqttStatus"] })
+      queryClient.invalidateQueries({ queryKey: ["mqttStatus"] });
     },
-  })
+  });
 
   const publishTestMessage = () => {
-    const testMessage = `Hello from client at ${new Date().toLocaleTimeString()}`
-    mutation.mutate({ data: { topic: "test/topic", message: testMessage } })
-  }
+    const testMessage = `Hello from client at ${new Date().toLocaleTimeString()}`;
+    mutation.mutate({ data: { topic: "test/topic", message: testMessage } });
+  };
 
-  const connectionStatus = data?.status ?? "Loading..."
-  const messages = data?.messages ?? []
+  const connectionStatus = data?.status ?? "Loading...";
+  const messages = data?.messages ?? [];
 
   return (
     <div className="p-4">
@@ -67,5 +67,5 @@ function MqttComponent() {
         </ul>
       </div>
     </div>
-  )
+  );
 }
