@@ -92,10 +92,8 @@ void connectToMqtt()
     Serial.print(".");
     delay(5000);
   }
-
   Serial.println(" MQTT Connected!");
 
-  // Subscribe to the test topic
   mqtt.subscribe("test/topic", mqttCallback);
 }
 
@@ -113,7 +111,7 @@ void setup()
 #if defined(PRODUCTION_BUILD)
   Serial.println("Mode: PRODUCTION (WSS)");
   Serial.printf("Connecting to %s:%d\n", BROKER_URL, BROKER_PORT);
-  client.beginSSL(BROKER_URL, BROKER_PORT);
+  client.beginSSL(BROKER_URL, BROKER_PORT, "/", "", "mqtt");
   client.setReconnectInterval(5000);
 #else
   Serial.println("Mode: DEVELOPMENT (unsecured MQTT)");
