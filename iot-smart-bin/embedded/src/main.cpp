@@ -10,6 +10,11 @@
 #ifdef CI_BUILD
 #define WIFI_SSID "DUMMY_SSID"
 #define WIFI_PASSWORD "DUMMY_PASSWORD"
+
+#define MQTT_PROD_BROKER_URL "ci.dummy.prod"
+#define MQTT_PROD_BROKER_PORT 443
+#define MQTT_PROD_USERNAME "ci_user"
+#define MQTT_PROD_PASSWORD "ci_pass"
 #else
 #include "credentials.h"
 #endif

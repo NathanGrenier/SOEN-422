@@ -49,10 +49,17 @@ pnpx shadcn@latest add button
 In order to connect, you'll need to generate a password file. You can use the following command to do so as long as you have Docker installed.
 
 ```sh
+# Windows
 docker run -it --rm \
   -v "$(pwd)/mosquitto/config/passwd:/mosquitto/config/passwd" \
   eclipse-mosquitto:latest \
   mosquitto_passwd /mosquitto/config/passwd YOUR_USER_NAME
+
+# Linux
+docker run -it --rm \
+  -v "$(pwd)/mosquitto/config:/mosquitto/config" \
+  eclipse-mosquitto:latest \
+  mosquitto_passwd -c /mosquitto/config/passwd YOUR_USER_NAME
 ```
 
 You might also need to use this command to properly load the `passwd` file after generation: `chmod 0700 ./mosquitto/config/passwd`
