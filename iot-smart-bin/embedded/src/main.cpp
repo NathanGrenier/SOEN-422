@@ -16,7 +16,11 @@
 #define MQTT_PROD_USERNAME "ci_user"
 #define MQTT_PROD_PASSWORD "ci_pass"
 #else
+#if defined(PRODUCTION_BUILD)
+#include "credentials.prod.h"
+#else
 #include "credentials.h"
+#endif
 #endif
 
 // --- WiFi Credentials ---
