@@ -4,16 +4,23 @@ import { json } from "@tanstack/react-start";
 export const Route = createFileRoute("/api/api/example")({
   server: {
     handlers: {
-      GET: async ({ request, params }) => {
+      GET: async ({
+        request,
+        params,
+      }: {
+        request: Request;
+        params: { id: string };
+      }) => {
         console.info(`Fetching by id=${params.id}... @`, request.url);
         try {
           const res = await fetch(
             `https://jsonplaceholder.typicode.com/users/${params.id}`,
           );
+          const data = await res.json();
           return json({
-            id: res.data.id,
-            name: res.data.name,
-            email: res.data.email,
+            id: data.id,
+            name: data.name,
+            email: data.email,
           });
         } catch (e) {
           console.error(e);
