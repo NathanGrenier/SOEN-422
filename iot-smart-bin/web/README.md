@@ -59,4 +59,4 @@ You might also need to use this command to properly load the `passwd` file after
 
 ## MQTT.js
 
-Using [this library](https://github.com/mqttjs/MQTT.js) for MQTT communication from the website to the broker. 
+Using [this library](https://github.com/mqttjs/MQTT.js) for MQTT communication from the website to the broker.

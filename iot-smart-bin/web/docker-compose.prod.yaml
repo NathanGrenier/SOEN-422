@@ -26,10 +26,10 @@ services:
     networks:
       - app_network
     ports:
-      # WebSocket Port 
-      - "9001:9001" 
+      # WebSocket Port
+      - "9001:9001"
       # Standard MQTT port for local testing
-      - "1883:1883" 
+      - "1883:1883"
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
 

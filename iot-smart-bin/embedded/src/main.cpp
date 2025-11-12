@@ -85,7 +85,7 @@ void connectToMqtt()
   while (!mqtt.connect(CLIENT_ID, MQTT_USER, MQTT_PASS))
   {
     Serial.print(".");
-    delay(5000); // Wait 5 seconds before retrying
+    delay(5000);
   }
 
   Serial.println(" MQTT Connected!");
