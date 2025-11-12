@@ -2,15 +2,15 @@ import {
   HeadContent,
   Scripts,
   createRootRouteWithContext,
-} from "@tanstack/react-router"
-import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
-import { TanStackDevtools } from "@tanstack/react-devtools"
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
-import Header from "../components/Header"
-import appCss from "../styles.css?url"
-import type { QueryClient } from "@tanstack/react-query"
-import { DefaultCatchBoundary } from "@/components/DefaultCatchBoundary"
-import { NotFound } from "@/components/NotFound"
+} from "@tanstack/react-router";
+import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
+import { TanStackDevtools } from "@tanstack/react-devtools";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import appCss from "../styles.css?url";
+import type { QueryClient } from "@tanstack/react-query";
+import { DefaultCatchBoundary } from "@/components/DefaultCatchBoundary";
+import { NotFound } from "@/components/NotFound";
+import Header from "@/components/Header";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   {
@@ -24,7 +24,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           content: "width=device-width, initial-scale=1",
         },
         {
-          title: "TanStack Start Starter",
+          title: "IoT Smart Bin Dashboard",
         },
       ],
       links: [
@@ -39,12 +39,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         <RootDocument>
           <DefaultCatchBoundary {...props} />
         </RootDocument>
-      )
+      );
     },
     notFoundComponent: () => <NotFound />,
     shellComponent: RootDocument,
   },
-)
+);
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
@@ -53,8 +53,12 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <Header />
-        {children}
+        <div className="min-h-screen bg-gray-50 text-gray-900">
+          <Header />
+          <main className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {children}
+          </main>
+        </div>
         {import.meta.env.DEV ? (
           <>
             <TanStackDevtools
@@ -74,5 +78,5 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <Scripts />
       </body>
     </html>
-  )
+  );
 }

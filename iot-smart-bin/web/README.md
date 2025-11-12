@@ -39,7 +39,7 @@ npm run format
 Add components using the latest version of [Shadcn](https://ui.shadcn.com/).
 
 ```bash
-pnpx shadcn@latest add button
+npx shadcn@latest add button
 ```
 
 # Getting Started (Mosquitto)

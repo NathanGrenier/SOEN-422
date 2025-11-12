@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as MqttRouteImport } from './routes/mqtt'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DemoDrizzleRouteImport } from './routes/demo/drizzle'
 import { Route as DemoStartServerFuncsRouteImport } from './routes/demo/start.server-funcs'
@@ -24,6 +25,11 @@ import { Route as DemoStartSsrDataOnlyRouteImport } from './routes/demo/start.ss
 const MqttRoute = MqttRouteImport.update({
   id: '/mqtt',
   path: '/mqtt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -79,6 +85,7 @@ const DemoStartSsrDataOnlyRoute = DemoStartSsrDataOnlyRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/dashboard': typeof DashboardRoute
   '/mqtt': typeof MqttRoute
   '/demo/drizzle': typeof DemoDrizzleRoute
   '/api/api/example': typeof ApiApiExampleRoute
@@ -92,6 +99,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/dashboard': typeof DashboardRoute
   '/mqtt': typeof MqttRoute
   '/demo/drizzle': typeof DemoDrizzleRoute
   '/api/api/example': typeof ApiApiExampleRoute
@@ -106,6 +114,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/dashboard': typeof DashboardRoute
   '/mqtt': typeof MqttRoute
   '/demo/drizzle': typeof DemoDrizzleRoute
   '/api/api/example': typeof ApiApiExampleRoute
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/dashboard'
     | '/mqtt'
     | '/demo/drizzle'
     | '/api/api/example'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/dashboard'
     | '/mqtt'
     | '/demo/drizzle'
     | '/api/api/example'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/dashboard'
     | '/mqtt'
     | '/demo/drizzle'
     | '/api/api/example'
@@ -161,6 +173,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DashboardRoute: typeof DashboardRoute
   MqttRoute: typeof MqttRoute
   DemoDrizzleRoute: typeof DemoDrizzleRoute
   ApiApiExampleRoute: typeof ApiApiExampleRoute
@@ -180,6 +193,13 @@ declare module '@tanstack/react-router' {
       path: '/mqtt'
       fullPath: '/mqtt'
       preLoaderRoute: typeof MqttRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -257,6 +277,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DashboardRoute: DashboardRoute,
   MqttRoute: MqttRoute,
   DemoDrizzleRoute: DemoDrizzleRoute,
   ApiApiExampleRoute: ApiApiExampleRoute,
