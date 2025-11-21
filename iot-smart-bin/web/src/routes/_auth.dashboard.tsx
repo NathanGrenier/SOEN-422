@@ -148,7 +148,7 @@ const DeviceCard = ({
               </span>
             </div>
           </div>
-          <div className="flex items-center text-sm text-gray-500 pt-1 pl-7">
+          <div className="flex items-center text-sm text-gray-500 pt-1 pl-1">
             <MapPin className="mr-1.5 h-4 w-4" />
             <span>{device.location}</span>
           </div>
