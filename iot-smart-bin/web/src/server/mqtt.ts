@@ -1,15 +1,15 @@
 /* eslint-disable @typescript-eslint/no-unnecessary-condition */
 /* eslint-disable @typescript-eslint/require-await */
 import { createServerFn } from "@tanstack/react-start";
-import z from "zod"; // Ensure zod is imported
-import { eq } from "drizzle-orm";
+import z from "zod";
+import { desc, eq } from "drizzle-orm";
 import {
   getBrokerStatus,
   getLiveDeviceState,
   getMqttClient,
 } from "./mqtt-client";
 import { db } from "@/db";
-import { devices } from "@/db/schema";
+import { devices, readings } from "@/db/schema";
 
 // --- Dashboard Data ---
 export const getDashboardData = createServerFn({ method: "GET" }).handler(
@@ -23,34 +23,63 @@ export const getDashboardData = createServerFn({ method: "GET" }).handler(
 
     const liveState = getLiveDeviceState();
 
-    const mergedDevices = dbDevices.map((dbDev) => {
-      const live = liveState[dbDev.id];
-      const now = Date.now();
-      const TIMEOUT_MS = 30000;
+    const mergedDevices = await Promise.all(
+      dbDevices.map(async (dbDev) => {
+        const live = liveState[dbDev.id];
+        const now = Date.now();
+        const TIMEOUT_MS = 30000;
 
-      // Determine if online based on recent live activity
-      // If we have live data, use its timestamp, otherwise use DB timestamp
-      const lastSeenTime = live?.lastSeen ?? dbDev.lastSeen?.getTime() ?? 0;
-      const isTimedOut = now - lastSeenTime > TIMEOUT_MS;
+        // Determine if online based on recent live activity
+        // If we have live data, use its timestamp, otherwise use DB timestamp
+        const lastSeenTime = live?.lastSeen ?? dbDev.lastSeen?.getTime() ?? 0;
+        const isTimedOut = now - lastSeenTime > TIMEOUT_MS;
 
-      // Valid if MQTT says online AND it hasn't timed out
-      const isOnline =
-        (live?.status === "online" || dbDev.status === "online") && !isTimedOut;
+        // Valid if MQTT says online AND it hasn't timed out
+        const isOnline =
+          (live?.status === "online" || dbDev.status === "online") &&
+          !isTimedOut;
 
-      return {
-        id: dbDev.id,
-        name: dbDev.name ?? dbDev.id,
-        location: dbDev.location ?? "Unknown",
-        threshold: dbDev.threshold,
-        fillLevel: live?.fillLevel ?? 0, // Default to 0 if no live data
-        batteryPercentage: live?.batteryPercentage ?? 0,
-        lastSeen: lastSeenTime,
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-        status: (isOnline ? "online" : "offline") as "online" | "offline",
-        isOnline: isOnline,
-        deployed: dbDev.deployed,
-      };
-    });
+        let fillLevel = live?.fillLevel;
+        let batteryPercentage = live?.batteryPercentage;
+
+        // If live data is missing (e.g. server restart), try to fetch latest from DB
+        if (fillLevel === undefined) {
+          try {
+            const lastReading = await db
+              .select()
+              .from(readings)
+              .where(eq(readings.deviceId, dbDev.id))
+              .orderBy(desc(readings.createdAt))
+              .limit(1);
+
+            if (lastReading.length > 0) {
+              fillLevel = lastReading[0].fillLevel;
+              batteryPercentage =
+                batteryPercentage ?? lastReading[0].batteryPercentage;
+            }
+          } catch (error) {
+            console.error(
+              `Failed to fetch last reading for ${dbDev.id}:`,
+              error,
+            );
+          }
+        }
+
+        return {
+          id: dbDev.id,
+          name: dbDev.name ?? dbDev.id,
+          location: dbDev.location ?? "Unknown",
+          threshold: dbDev.threshold,
+          fillLevel: fillLevel ?? 0,
+          batteryPercentage: batteryPercentage ?? 0,
+          lastSeen: lastSeenTime,
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+          status: (isOnline ? "online" : "offline") as "online" | "offline",
+          isOnline: isOnline,
+          deployed: dbDev.deployed,
+        };
+      }),
+    );
 
     return {
       brokerStatus: getBrokerStatus(),
