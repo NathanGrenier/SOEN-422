@@ -13,6 +13,8 @@ count.txt
 todos.json
 .vscode/
 *.log
+.repomixignore
+repomix* 
 
 # Ignore local database files
 /db/*.sqlite

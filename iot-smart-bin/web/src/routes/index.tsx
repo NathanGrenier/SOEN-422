@@ -1,118 +1,96 @@
-import { createFileRoute } from "@tanstack/react-router";
-import {
-  Route as RouteIcon,
-  Server,
-  Shield,
-  Sparkles,
-  Waves,
-  Zap,
-} from "lucide-react";
+import { Link, createFileRoute } from "@tanstack/react-router";
+import { ArrowRight, BarChart3, BatteryCharging, Signal } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export const Route = createFileRoute("/")({ component: App });
+export const Route = createFileRoute("/")({ component: LandingPage });
 
-function App() {
-  const features = [
-    {
-      icon: <Zap className="w-12 h-12 text-cyan-400" />,
-      title: "Powerful Server Functions",
-      description:
-        "Write server-side code that seamlessly integrates with your client components. Type-safe, secure, and simple.",
-    },
-    {
-      icon: <Server className="w-12 h-12 text-cyan-400" />,
-      title: "Flexible Server Side Rendering",
-      description:
-        "Full-document SSR, streaming, and progressive enhancement out of the box. Control exactly what renders where.",
-    },
-    {
-      icon: <RouteIcon className="w-12 h-12 text-cyan-400" />,
-      title: "API Routes",
-      description:
-        "Build type-safe API endpoints alongside your application. No separate backend needed.",
-    },
-    {
-      icon: <Shield className="w-12 h-12 text-cyan-400" />,
-      title: "Strongly Typed Everything",
-      description:
-        "End-to-end type safety from server to client. Catch errors before they reach production.",
-    },
-    {
-      icon: <Waves className="w-12 h-12 text-cyan-400" />,
-      title: "Full Streaming Support",
-      description:
-        "Stream data from server to client progressively. Perfect for AI applications and real-time updates.",
-    },
-    {
-      icon: <Sparkles className="w-12 h-12 text-cyan-400" />,
-      title: "Next Generation Ready",
-      description:
-        "Built from the ground up for modern web applications. Deploy anywhere JavaScript runs.",
-    },
-  ];
-
+function LandingPage() {
   return (
-    <div className="bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
-      <section className="relative py-20 px-6 text-center overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-purple-500/10"></div>
-        <div className="relative max-w-5xl mx-auto">
-          <div className="flex items-center justify-center gap-6 mb-6">
-            <img
-              src="/tanstack-circle-logo.png"
-              alt="TanStack Logo"
-              className="w-24 h-24 md:w-32 md:h-32"
-            />
-            <h1 className="text-6xl md:text-7xl font-black text-white [letter-spacing:-0.08em]">
-              <span className="text-gray-300">TANSTACK</span>{" "}
-              <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                START
-              </span>
-            </h1>
-          </div>
-          <p className="text-2xl md:text-3xl text-gray-300 mb-4 font-light">
-            The framework for next generation AI applications
-          </p>
-          <p className="text-lg text-gray-400 max-w-3xl mx-auto mb-8">
-            Full-stack framework powered by TanStack Router for React and Solid.
-            Build modern applications with server functions, streaming, and type
-            safety.
-          </p>
-          <div className="flex flex-col items-center gap-4">
+    <div className="flex flex-col min-h-[calc(100vh-4rem)]">
+      {/* Hero Section */}
+      <section className="flex-1 flex flex-col items-center justify-center py-20 text-center space-y-8 max-w-4xl mx-auto px-4">
+        <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+          Data-Driven <span className="text-emerald-600">Waste Management</span>
+        </h1>
+
+        <p className="text-xl text-slate-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">
+          Eliminating the inefficiencies of static collection schedules. We use
+          IoT sensors to provide real-time fill levels, optimizing labor and
+          ensuring campus sanitation.
+        </p>
+
+        <div className="flex flex-col sm:flex-row gap-4 w-full justify-center pt-4">
+          <Link to="/dashboard">
+            <Button
+              size="lg"
+              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-lg px-8 h-12"
+            >
+              Launch Dashboard
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+          </Link>
+          <Button
+            variant="outline"
+            size="lg"
+            className="w-full sm:w-auto h-12 text-lg"
+            asChild
+          >
             <a
-              href="https://tanstack.com/start"
+              href="https://github.com/NathanGrenier/SOEN-422"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-8 py-3 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold rounded-lg transition-colors shadow-lg shadow-cyan-500/50"
             >
-              Documentation
+              View Documentation
             </a>
-            <p className="text-gray-400 text-sm mt-2">
-              Begin your TanStack Start journey by editing{" "}
-              <code className="px-2 py-1 bg-slate-700 rounded text-cyan-400">
-                /src/routes/index.tsx
-              </code>
-            </p>
+          </Button>
+        </div>
+      </section>
+
+      {/* Features Grid */}
+      <section className="py-16 bg-slate-50 dark:bg-slate-900/50 rounded-3xl mb-10">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <Card className="border-none shadow-md bg-white dark:bg-slate-800">
+              <CardHeader>
+                <Signal className="h-10 w-10 text-emerald-600 mb-2" />
+                <CardTitle>Real-Time Telemetry</CardTitle>
+              </CardHeader>
+              <CardContent className="text-slate-600 dark:text-slate-400">
+                Utilizing ESP32 microcontrollers and ultrasonic sensors to
+                transmit fill-level data instantly via MQTT over WiFi.
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-md bg-white dark:bg-slate-800">
+              <CardHeader>
+                <BarChart3 className="h-10 w-10 text-blue-600 mb-2" />
+                <CardTitle>Intelligent Analytics</CardTitle>
+              </CardHeader>
+              <CardContent className="text-slate-600 dark:text-slate-400">
+                A central dashboard aggregates data to identify overflowing bins
+                (85%+) and optimize collection routes.
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-md bg-white dark:bg-slate-800">
+              <CardHeader>
+                <BatteryCharging className="h-10 w-10 text-amber-500 mb-2" />
+                <CardTitle>Low Power Design</CardTitle>
+              </CardHeader>
+              <CardContent className="text-slate-600 dark:text-slate-400">
+                Embedded Deep-Sleep protocols ensure longevity, waking only on
+                periodic timers or interrupt triggers.
+              </CardContent>
+            </Card>
           </div>
         </div>
       </section>
 
-      <section className="py-16 px-6 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature, index) => (
-            <div
-              key={index}
-              className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 hover:border-cyan-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-cyan-500/10"
-            >
-              <div className="mb-4">{feature.icon}</div>
-              <h3 className="text-xl font-semibold text-white mb-3">
-                {feature.title}
-              </h3>
-              <p className="text-gray-400 leading-relaxed">
-                {feature.description}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* Footer */}
+      <footer className="py-8 text-center text-sm text-slate-500 border-t">
+        <p>© 2025 Concordia University - SOEN 422 Semester Project.</p>
+      </footer>
     </div>
   );
 }

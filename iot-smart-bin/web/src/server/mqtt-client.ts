@@ -1,68 +1,168 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition */
 import mqtt from "mqtt";
+import z from "zod";
+import { eq } from "drizzle-orm";
 import type { MqttClient } from "mqtt";
 import { env } from "@/env";
+import { db } from "@/db"; // Import DB
+import { devices, readings } from "@/db/schema";
 
+// --- Types ---
+const BinDataSchema = z.object({
+  deviceId: z.string(),
+  fillLevel: z.number(),
+  batteryPercentage: z.number().optional().default(100),
+});
+export type BinData = z.infer<typeof BinDataSchema>;
+
+export interface Device {
+  id: string;
+  fillLevel: number;
+  threshold: number;
+  lastSeen: number;
+  status: "online" | "offline";
+  isOnline: boolean;
+  location: string;
+  batteryPercentage: number;
+}
+
+// --- State and Client ---
 let client: MqttClient | null = null;
-let connectionStatus = "Disconnected";
-const messages: string[] = [];
+let brokerConnectionStatus:
+  | "Connected"
+  | "Disconnected"
+  | "Connecting"
+  | "Reconnecting"
+  | "Error" = "Disconnected";
+
+// In-memory cache for the dashboard (fast access)
+const deviceStore: Record<
+  string,
+  {
+    fillLevel: number;
+    lastSeen: number;
+    status: string;
+    batteryPercentage: number;
+  }
+> = {};
 
 const connect = () => {
-  // If client exists and is connected/reconnecting, do nothing.
   if (client && (client.connected || client.reconnecting)) {
     return client;
   }
-
   console.log("Attempting to connect to MQTT broker...");
-  const brokerUrl = env.MQTT_BROKER_URL;
+  brokerConnectionStatus = "Connecting";
+
   const options = {
     username: env.MQTT_USERNAME,
     password: env.MQTT_PASSWORD,
-    reconnectPeriod: 1000, // Try to reconnect every 1 second
+    reconnectPeriod: 1000,
   };
 
-  client = mqtt.connect(brokerUrl, options);
+  client = mqtt.connect(env.MQTT_BROKER_URL, options);
 
   client.on("connect", () => {
-    connectionStatus = "Connected";
-    console.log("MQTT client connected");
-    client?.subscribe("test/topic", (err) => {
-      if (err) {
-        console.error("MQTT subscription error:", err);
-        messages.push(`Subscription failed: ${err.message}`);
-      } else {
-        messages.push("Subscribed to test/topic");
-      }
+    brokerConnectionStatus = "Connected";
+    console.log("MQTT Broker Connected");
+    client?.subscribe(["bins/+/data", "bins/+/status"], (err) => {
+      if (err) console.error("Subscription failed:", err);
+      else console.log("Subscribed to bins/+/data and bins/+/status");
     });
   });
 
   client.on("error", (err) => {
-    connectionStatus = `Error: ${err.message}`;
-    console.error("MQTT connection error:", err);
+    brokerConnectionStatus = "Error";
+    console.error("MQTT Error:", err);
   });
 
   client.on("reconnect", () => {
-    connectionStatus = "Reconnecting...";
+    brokerConnectionStatus = "Reconnecting";
     console.log("MQTT client reconnecting...");
   });
 
   client.on("close", () => {
-    connectionStatus = "Disconnected";
-    console.log("MQTT client disconnected");
+    brokerConnectionStatus = "Disconnected";
+    console.log("MQTT Connection Closed");
   });
 
-  client.on("message", (topic, payload) => {
-    const message = `[${topic}]: ${payload.toString()}`;
-    console.log(`MQTT message received: ${message}`);
-    messages.push(message);
+  client.on("message", async (topic, payload) => {
+    const parts = topic.split("/");
+    const binId = parts[1];
+    const type = parts[2];
+    const msgString = payload.toString();
+
+    if (!binId) return;
+
+    // Ensure device exists in DB (Upsert)
+    try {
+      await db
+        .insert(devices)
+        .values({
+          id: binId,
+          lastSeen: new Date(),
+          deployed: true,
+        })
+        .onConflictDoUpdate({
+          target: devices.id,
+          set: { lastSeen: new Date() },
+        });
+    } catch (e) {
+      console.error("DB Error creating device:", e);
+    }
+
+    if (type === "status") {
+      const status = msgString === "online" ? "online" : "offline";
+
+      // Update In-Memory Store
+      const existing = deviceStore[binId] || {
+        fillLevel: 0,
+        batteryPercentage: 100,
+      };
+      deviceStore[binId] = {
+        ...existing,
+        status,
+        lastSeen: Date.now(),
+      };
+
+      await db.update(devices).set({ status }).where(eq(devices.id, binId));
+    } else if (type === "data") {
+      try {
+        const json = JSON.parse(msgString);
+        const result = BinDataSchema.safeParse(json);
+
+        if (result.success) {
+          const { deviceId, fillLevel, batteryPercentage } = result.data;
+
+          // Update In-Memory Store
+          deviceStore[deviceId] = {
+            fillLevel,
+            batteryPercentage,
+            lastSeen: Date.now(),
+            status: "online",
+          };
+
+          // Update DB Device Status
+          await db
+            .update(devices)
+            .set({ status: "online", lastSeen: new Date() })
+            .where(eq(devices.id, deviceId));
+
+          await db.insert(readings).values({
+            deviceId,
+            fillLevel,
+            batteryPercentage,
+            createdAt: new Date(),
+          });
+        }
+      } catch (e) {
+        console.error("Failed to parse JSON or DB error:", e);
+      }
+    }
   });
 
   return client;
 };
 
-/**
- * Lazily initializes and returns the MQTT client instance.
- * Ensures the connection logic only runs on the server when needed.
- */
 export const getMqttClient = () => {
   if (!client) {
     connect();
@@ -70,17 +170,27 @@ export const getMqttClient = () => {
   return client;
 };
 
-/**
- * Returns the current state of the MQTT connection.
- */
-export const getMqttState = () => ({
-  status: connectionStatus,
-  messages: [...messages].reverse(),
-});
+export const getBrokerStatus = () => brokerConnectionStatus;
 
-/**
- * Adds a message to the server-side message log.
- */
-export const addMqttMessage = (message: string) => {
-  messages.push(message);
+export const getLiveDeviceState = () => deviceStore;
+
+export const getDevices = (): Device[] => {
+  const now = Date.now();
+  const TIMEOUT_MS = 30000;
+
+  return Object.entries(deviceStore).map(([id, data]) => {
+    const isTimedOut = now - data.lastSeen > TIMEOUT_MS;
+    const isOnline = data.status === "online" && !isTimedOut;
+
+    return {
+      id,
+      fillLevel: data.fillLevel,
+      threshold: 85,
+      lastSeen: data.lastSeen,
+      status: data.status as "online" | "offline",
+      isOnline,
+      location: "Unknown",
+      batteryPercentage: data.batteryPercentage,
+    };
+  });
 };

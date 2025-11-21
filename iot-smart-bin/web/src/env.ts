@@ -9,6 +9,8 @@ export const env = createEnv({
     MQTT_BROKER_URL: z.string().min(1),
     MQTT_USERNAME: z.string().min(1),
     MQTT_PASSWORD: z.string().min(1),
+    ADMIN_EMAIL: z.email().default("admin@smartbin.com"),
+    ADMIN_PASSWORD: z.string().min(8).default("password123"),
   },
   client: {
     VITE_API_BASE_URL: z.string().min(1),

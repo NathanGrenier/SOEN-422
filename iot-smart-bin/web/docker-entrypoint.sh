@@ -14,6 +14,10 @@ npm run db:check
 echo "Running database migrations..."
 npm run db:migrate
 
+# Seed database
+echo "Seeding database..."
+npm run db:seed
+
 # Start the application
 echo "Starting the application..."
 exec npm run start
