@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUpDown, MoreHorizontal, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
@@ -152,6 +152,24 @@ const ActionCell = ({
   );
 };
 
+const DateCell = ({ date }: { date: string | number | Date | null }) => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!date) return <div className="text-slate-400">Never</div>;
+
+  if (!mounted) {
+    return <div className="text-slate-600">...</div>;
+  }
+
+  return (
+    <div className="text-slate-600">{new Date(date).toLocaleString()}</div>
+  );
+};
+
 export const createColumns = (
   onUpdate: (id: string, data: Partial<Device>) => void,
   onClearReadings: (id: string) => void,
@@ -242,15 +260,7 @@ export const createColumns = (
   {
     accessorKey: "lastSeen",
     header: "Last Seen",
-    cell: ({ row }) => {
-      const date = row.getValue("lastSeen");
-      if (!date) return <div className="text-slate-400">Never</div>;
-      return (
-        <div className="text-slate-600">
-          {new Date(date as string | number | Date).toLocaleString()}
-        </div>
-      );
-    },
+    cell: ({ row }) => <DateCell date={row.getValue("lastSeen")} />,
   },
   {
     id: "actions",
