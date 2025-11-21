@@ -72,7 +72,7 @@ const connect = () => {
 
   client.on("error", (err) => {
     brokerConnectionStatus = "Error";
-    console.error("MQTT Error:", err);
+    console.error("MQTT Error: " + err.message);
   });
 
   client.on("reconnect", () => {
