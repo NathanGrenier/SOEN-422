@@ -114,9 +114,13 @@ jobs:
         run: |
           echo "REPO=${GITHUB_REPOSITORY@L}" >> "${GITHUB_ENV}"
       
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: iot-smart-bin/web
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.REPO }}:latest
+          no-cache: true
