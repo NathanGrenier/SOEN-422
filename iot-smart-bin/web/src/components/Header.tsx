@@ -68,7 +68,7 @@ export default function Header() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="hidden sm:flex gap-2"
+                  className="flex gap-2"
                   onClick={handleSignOut}
                 >
                   <LogOut className="h-4 w-4" />
@@ -76,11 +76,7 @@ export default function Header() {
                 </Button>
               ) : (
                 <Link to="/login">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="hidden sm:flex gap-2"
-                  >
+                  <Button variant="ghost" size="sm" className="flex gap-2">
                     <LogIn className="h-4 w-4" />
                     Login
                   </Button>
