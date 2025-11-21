@@ -28,6 +28,11 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/drizzle.config.ts ./drizzle.config.ts
 COPY --from=build /app/drizzle ./drizzle
+# Files needed for seeding
+COPY --from=build /app/tsconfig.json ./tsconfig.json
+COPY --from=build /app/src/db ./src/db
+COPY --from=build /app/src/lib ./src/lib
+COPY --from=build /app/src/env.ts ./src/env.ts
 
 # Copy the entrypoint script and make it executable
 COPY docker-entrypoint.sh .
