@@ -88,9 +88,6 @@ jobs:
       - name: Generate DB migrations
         run: npm run db:generate
 
-      - name: Apply DB migrations
-        run: npm run db:migrate
-
       - name: Build
         run: npm run build
 
