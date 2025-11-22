@@ -137,8 +137,13 @@ function ChartTooltipContent({
     const [item] = payload;
     const key = `${labelKey || item?.dataKey || item?.name || "value"}`;
     const itemConfig = getPayloadConfigFromPayload(config, item, key);
+
+    // Allow numbers (timestamps) and Dates to pass through as values
     const value =
-      !labelKey && typeof label === "string"
+      !labelKey &&
+      (typeof label === "string" ||
+        typeof label === "number" ||
+        label instanceof Date)
         ? config[label as keyof typeof config]?.label || label
         : itemConfig?.label;
 
@@ -154,7 +159,11 @@ function ChartTooltipContent({
       return null;
     }
 
-    return <div className={cn("font-medium", labelClassName)}>{value}</div>;
+    const displayValue = value instanceof Date ? value.toLocaleString() : value;
+
+    return (
+      <div className={cn("font-medium", labelClassName)}>{displayValue}</div>
+    );
   }, [
     label,
     labelFormatter,
@@ -174,7 +183,7 @@ function ChartTooltipContent({
   return (
     <div
       className={cn(
-        "border-border/50 bg-background grid min-w-[8rem] items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl",
+        "border-border/50 bg-background grid min-w-32 items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl",
         className,
       )}
     >

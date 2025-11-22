@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthDevicesRouteImport } from './routes/_auth.devices'
 import { Route as AuthDashboardRouteImport } from './routes/_auth.dashboard'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as AuthDashboardDeviceIdRouteImport } from './routes/_auth.dashboard.$deviceId'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -45,19 +46,26 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthDashboardDeviceIdRoute = AuthDashboardDeviceIdRouteImport.update({
+  id: '/$deviceId',
+  path: '/$deviceId',
+  getParentRoute: () => AuthDashboardRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
-  '/dashboard': typeof AuthDashboardRoute
+  '/dashboard': typeof AuthDashboardRouteWithChildren
   '/devices': typeof AuthDevicesRoute
+  '/dashboard/$deviceId': typeof AuthDashboardDeviceIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
-  '/dashboard': typeof AuthDashboardRoute
+  '/dashboard': typeof AuthDashboardRouteWithChildren
   '/devices': typeof AuthDevicesRoute
+  '/dashboard/$deviceId': typeof AuthDashboardDeviceIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
@@ -65,15 +73,28 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_auth': typeof AuthRouteWithChildren
   '/login': typeof LoginRoute
-  '/_auth/dashboard': typeof AuthDashboardRoute
+  '/_auth/dashboard': typeof AuthDashboardRouteWithChildren
   '/_auth/devices': typeof AuthDevicesRoute
+  '/_auth/dashboard/$deviceId': typeof AuthDashboardDeviceIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/dashboard' | '/devices' | '/api/auth/$'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/dashboard'
+    | '/devices'
+    | '/dashboard/$deviceId'
+    | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/dashboard' | '/devices' | '/api/auth/$'
+  to:
+    | '/'
+    | '/login'
+    | '/dashboard'
+    | '/devices'
+    | '/dashboard/$deviceId'
+    | '/api/auth/$'
   id:
     | '__root__'
     | '/'
@@ -81,6 +102,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_auth/dashboard'
     | '/_auth/devices'
+    | '/_auth/dashboard/$deviceId'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
@@ -135,16 +157,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_auth/dashboard/$deviceId': {
+      id: '/_auth/dashboard/$deviceId'
+      path: '/$deviceId'
+      fullPath: '/dashboard/$deviceId'
+      preLoaderRoute: typeof AuthDashboardDeviceIdRouteImport
+      parentRoute: typeof AuthDashboardRoute
+    }
   }
 }
 
+interface AuthDashboardRouteChildren {
+  AuthDashboardDeviceIdRoute: typeof AuthDashboardDeviceIdRoute
+}
+
+const AuthDashboardRouteChildren: AuthDashboardRouteChildren = {
+  AuthDashboardDeviceIdRoute: AuthDashboardDeviceIdRoute,
+}
+
+const AuthDashboardRouteWithChildren = AuthDashboardRoute._addFileChildren(
+  AuthDashboardRouteChildren,
+)
+
 interface AuthRouteChildren {
-  AuthDashboardRoute: typeof AuthDashboardRoute
+  AuthDashboardRoute: typeof AuthDashboardRouteWithChildren
   AuthDevicesRoute: typeof AuthDevicesRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
-  AuthDashboardRoute: AuthDashboardRoute,
+  AuthDashboardRoute: AuthDashboardRouteWithChildren,
   AuthDevicesRoute: AuthDevicesRoute,
 }
 

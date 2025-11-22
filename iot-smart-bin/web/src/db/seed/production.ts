@@ -1,10 +1,11 @@
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { env } from "@/env";
 
 export async function seedProduction() {
-  console.log("🌱 Seeding database...");
+  console.log("🌱 Seeding production database...");
 
   // --- Seed Devices ---
   const dummyDevices = [
@@ -14,7 +15,7 @@ export async function seedProduction() {
       location: "Library",
       threshold: 90,
       deployed: true,
-      status: "offline",
+      status: "online",
       lastSeen: new Date(),
     },
     {
@@ -23,7 +24,7 @@ export async function seedProduction() {
       location: "Cafeteria",
       threshold: 80,
       deployed: true,
-      status: "offline",
+      status: "online",
       lastSeen: new Date(),
     },
     {
@@ -42,6 +43,45 @@ export async function seedProduction() {
       target: schema.devices.id,
       set: device,
     });
+
+    // --- Generate Readings for Production Demo Purposes ---
+    if (device.deployed) {
+      const readings: (typeof schema.readings.$inferInsert)[] = [];
+      const now = new Date().getTime();
+      const oneDayAgo = now - 24 * 60 * 60 * 1000;
+
+      let currentFill = Math.floor(Math.random() * 30);
+      let currentBattery = 100.0;
+
+      for (let t = oneDayAgo; t <= now; t += 30 * 60 * 1000) {
+        // Fill logic
+        const change = Math.random() * 12;
+        currentFill += change;
+        if (currentFill > 95) currentFill = 2;
+
+        const drainFactor = change > 5 ? 0.4 : 0.1;
+        const randomDrain = Math.random() * 0.2;
+        currentBattery -= drainFactor + randomDrain;
+
+        if (currentBattery < 0) currentBattery = 0;
+
+        readings.push({
+          deviceId: device.id,
+          fillLevel: parseFloat(currentFill.toFixed(1)),
+          batteryPercentage: parseFloat(currentBattery.toFixed(1)),
+          voltage: 4.0,
+          isTilted: false,
+          createdAt: new Date(t),
+        });
+      }
+
+      if (readings.length > 0) {
+        await db
+          .delete(schema.readings)
+          .where(eq(schema.readings.deviceId, device.id));
+        await db.insert(schema.readings).values(readings);
+      }
+    }
   }
 
   // --- Seed Admin User ---
@@ -49,7 +89,7 @@ export async function seedProduction() {
   const adminPassword = env.ADMIN_PASSWORD;
 
   const existingUser = await db.query.user.findFirst({
-    where: (u, { eq }) => eq(u.email, adminEmail),
+    where: eq(schema.user.email, adminEmail),
   });
 
   if (!existingUser) {

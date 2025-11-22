@@ -11,7 +11,7 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, Outlet, createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import type { Device } from "@/server/mqtt-client";
 import { Badge } from "@/components/ui/badge";
@@ -71,11 +71,13 @@ const FillLevelBar = ({
 const DeviceCard = ({
   device,
   onDragStart,
+  onDragEnd,
   onDrop,
   isDragging,
 }: {
   device: Device;
   onDragStart: (e: React.DragEvent, id: string) => void;
+  onDragEnd: () => void;
   onDrop: (e: React.DragEvent, id: string) => void;
   isDragging: boolean;
 }) => {
@@ -120,75 +122,93 @@ const DeviceCard = ({
     <div
       draggable="true"
       onDragStart={(e) => onDragStart(e, device.id)}
+      onDragEnd={onDragEnd}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => onDrop(e, device.id)}
-      className={`transition-opacity duration-200 ${isDragging ? "opacity-40" : "opacity-100"}`}
+      className={`transition-all duration-200 ${isDragging ? "opacity-40" : "opacity-100"}`}
     >
-      <Card
-        className={`${!isOnline ? `opacity-60 grayscale` : ``} ${isTipped ? "border-red-500 border-2" : ""}`}
+      <Link
+        to="/dashboard/$deviceId"
+        params={{ deviceId: device.id }}
+        className="block h-full cursor-pointer group"
+        draggable={false}
       >
-        <CardHeader>
-          <div className="flex justify-between items-start">
-            <div className="flex items-center gap-2">
-              <div className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800">
-                <GripVertical className="h-4 w-4 text-slate-400" />
+        <Card
+          className={`h-full transition-all group-hover:border-emerald-500/50 group-hover:shadow-md ${!isOnline ? `opacity-60 grayscale` : ``} ${isTipped ? "border-red-500 border-2" : ""}`}
+        >
+          <CardHeader>
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-2">
+                <div
+                  className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                  onClick={(e) => e.preventDefault()} // Prevent link nav when grabbing
+                >
+                  <GripVertical className="h-4 w-4 text-slate-400" />
+                </div>
+                <CardTitle>{device.id}</CardTitle>
               </div>
-              <CardTitle>{device.id}</CardTitle>
-            </div>
-            {isTipped && (
-              <div className="flex items-center text-red-600 font-bold animate-pulse">
-                <RotateCw className="h-5 w-5 mr-1" />
-                <span>TIPPED</span>
-              </div>
-            )}
-            <div className="flex items-center space-x-2">
-              {isOnline ? (
-                <Wifi className="h-4 w-4 text-green-600" />
-              ) : (
-                <WifiOff className="h-4 w-4 text-red-600" />
+              {isTipped && (
+                <div className="flex items-center text-red-600 font-bold animate-pulse">
+                  <RotateCw className="h-5 w-5 mr-1" />
+                  <span>TIPPED</span>
+                </div>
               )}
-              <span
-                className={
-                  isOnline
-                    ? "text-green-700 font-medium"
-                    : "text-red-700 font-medium"
-                }
-              >
-                {isOnline ? "Online" : "Offline"}
-              </span>
+              <div className="flex items-center space-x-2">
+                {isOnline ? (
+                  <Wifi className="h-4 w-4 text-green-600" />
+                ) : (
+                  <WifiOff className="h-4 w-4 text-red-600" />
+                )}
+                <span
+                  className={
+                    isOnline
+                      ? "text-green-700 font-medium"
+                      : "text-red-700 font-medium"
+                  }
+                >
+                  {isOnline ? "Online" : "Offline"}
+                </span>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center text-sm text-gray-500 pt-1 pl-1">
-            <MapPin className="mr-1.5 h-4 w-4" />
-            <span>{device.location}</span>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <FillLevelBar level={device.fillLevel} threshold={device.threshold} />
-        </CardContent>
-        <CardFooter className="flex justify-between">
-          <div
-            className={`flex items-center space-x-2 text-sm ${batteryColorClass}`}
-          >
-            <Battery className="h-5 w-5" />
-            <span>{device.batteryPercentage}%</span>
-          </div>
+            <div className="flex items-center text-sm text-gray-500 pt-1 pl-1">
+              <MapPin className="mr-1.5 h-4 w-4" />
+              <span>{device.location}</span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <FillLevelBar
+              level={device.fillLevel}
+              threshold={device.threshold}
+            />
+          </CardContent>
+          <CardFooter className="flex justify-between">
+            <div
+              className={`flex items-center space-x-2 text-sm ${batteryColorClass}`}
+            >
+              <Battery className="h-5 w-5" />
+              <span>{device.batteryPercentage}%</span>
+            </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!isOnline || isPinging}
-            onClick={handlePing}
-          >
-            {isPinging ? (
-              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-            ) : (
-              <Radio className="mr-1.5 h-4 w-4" />
-            )}
-            {isPinging ? "Pinging..." : "Ping"}
-          </Button>
-        </CardFooter>
-      </Card>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!isOnline || isPinging}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handlePing();
+              }}
+            >
+              {isPinging ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <Radio className="mr-1.5 h-4 w-4" />
+              )}
+              {isPinging ? "Pinging..." : "Ping"}
+            </Button>
+          </CardFooter>
+        </Card>
+      </Link>
     </div>
   );
 };
@@ -247,6 +267,10 @@ function Dashboard() {
     setDraggedId(id);
     // required for firefox
     e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragEnd = () => {
+    setDraggedId(null);
   };
 
   const handleDrop = useCallback(
@@ -331,11 +355,13 @@ function Dashboard() {
             key={device.id}
             device={device}
             onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
             onDrop={handleDrop}
             isDragging={draggedId === device.id}
           />
         ))}
       </div>
+      <Outlet />
     </div>
   );
 }
