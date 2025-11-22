@@ -7,8 +7,10 @@ import {
   MapPin,
   Radio,
   RadioTower,
+  RotateCw,
   Wifi,
   WifiOff,
+  Zap,
 } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -78,8 +80,9 @@ const DeviceCard = ({
   onDrop: (e: React.DragEvent, id: string) => void;
   isDragging: boolean;
 }) => {
-  const isOnline = device.isOnline;
   const [isPinging, setIsPinging] = useState(false);
+  const isOnline = device.isOnline;
+  const isTipped = device.isTilted;
 
   let batteryColorClass = "text-gray-600";
   if (device.batteryPercentage <= 15) batteryColorClass = "text-red-600";
@@ -122,7 +125,9 @@ const DeviceCard = ({
       onDrop={(e) => onDrop(e, device.id)}
       className={`transition-opacity duration-200 ${isDragging ? "opacity-40" : "opacity-100"}`}
     >
-      <Card className={`${!isOnline ? `opacity-60 grayscale` : ``}`}>
+      <Card
+        className={`${!isOnline ? `opacity-60 grayscale` : ``} ${isTipped ? "border-red-500 border-2" : ""}`}
+      >
         <CardHeader>
           <div className="flex justify-between items-start">
             <div className="flex items-center gap-2">
@@ -131,6 +136,12 @@ const DeviceCard = ({
               </div>
               <CardTitle>{device.id}</CardTitle>
             </div>
+            {isTipped && (
+              <div className="flex items-center text-red-600 font-bold animate-pulse">
+                <RotateCw className="h-5 w-5 mr-1" />
+                <span>TIPPED</span>
+              </div>
+            )}
             <div className="flex items-center space-x-2">
               {isOnline ? (
                 <Wifi className="h-4 w-4 text-green-600" />

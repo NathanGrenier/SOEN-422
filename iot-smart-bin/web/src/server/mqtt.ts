@@ -41,6 +41,8 @@ export const getDashboardData = createServerFn({ method: "GET" }).handler(
 
         let fillLevel = live?.fillLevel;
         let batteryPercentage = live?.batteryPercentage;
+        let voltage = live?.voltage;
+        let isTilted = live?.isTilted;
 
         // If live data is missing (e.g. server restart), try to fetch latest from DB
         if (fillLevel === undefined) {
@@ -56,6 +58,8 @@ export const getDashboardData = createServerFn({ method: "GET" }).handler(
               fillLevel = lastReading[0].fillLevel;
               batteryPercentage =
                 batteryPercentage ?? lastReading[0].batteryPercentage;
+              voltage = voltage ?? lastReading[0].voltage;
+              isTilted = isTilted ?? lastReading[0].isTilted;
             }
           } catch (error) {
             console.error(
@@ -65,13 +69,20 @@ export const getDashboardData = createServerFn({ method: "GET" }).handler(
           }
         }
 
+        if (batteryPercentage === undefined)
+          batteryPercentage = dbDev.batteryPercentage ?? 100;
+        if (voltage === undefined) voltage = dbDev.voltage ?? 5.0;
+        if (isTilted === undefined) isTilted = dbDev.isTilted ?? false;
+
         return {
           id: dbDev.id,
           name: dbDev.name ?? dbDev.id,
           location: dbDev.location ?? "Unknown",
           threshold: dbDev.threshold,
           fillLevel: fillLevel ?? 0,
-          batteryPercentage: batteryPercentage ?? 0,
+          batteryPercentage: batteryPercentage,
+          voltage: voltage,
+          isTilted: isTilted,
           lastSeen: lastSeenTime,
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
           status: (isOnline ? "online" : "offline") as "online" | "offline",

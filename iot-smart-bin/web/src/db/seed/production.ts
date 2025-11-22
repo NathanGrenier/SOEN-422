@@ -61,7 +61,7 @@ export async function seedProduction() {
         name: "Admin User",
       },
     });
-    console.log(`User created: ${adminEmail} / ${adminPassword}`);
+    console.log("Admin User created");
   } else {
     console.log("Admin user already exists.");
   }

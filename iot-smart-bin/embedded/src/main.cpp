@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <HCSR04.h>
+#include <TiltSensor.h>
 #include "api_config.h"
 #if defined(PRODUCTION_BUILD)
 #include <WebSocketsClient.h> // For WSS
@@ -40,6 +41,10 @@ const byte ECHO_PIN = 16;          // White Wire
 const byte TRIGGER_PIN = 17;       // Yellow Wire
 const u16_t MAX_DISTANCE_CM = 400; // Maximum distance to measure (in cm)
 UltraSonicDistanceSensor distanceSensor = UltraSonicDistanceSensor(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE_CM);
+
+const byte TILT_PIN = 13; // White Wire
+// RBS 040100 is Closed when Upright, so we set normallyClosed = true
+TiltSensor tiltSensor(TILT_PIN, true);
 
 // --- Bin Configuration ---
 const float BIN_HEIGHT_CM = BIN_HEIGHT; // The total depth of the bin
@@ -180,6 +185,8 @@ void setup()
   clientId = String(DEVICE_ID) + String(ENV_SUFFIX);
   Serial.printf("Device Configured: %s\n", clientId.c_str());
 
+  tiltSensor.begin();
+
   connectToWifi();
 
 // --- Configure the correct client ---
@@ -310,11 +317,20 @@ void loop()
           int fillPercentage = map((long)distance, 0, (long)BIN_HEIGHT_CM, 100, 0);
           fillPercentage = constrain(fillPercentage, 0, 100);
 
+          // Hardcoded values since battery power not implemented
+          int batteryLevel = 100;
+          float voltage = 5.0;
+
+          bool isTilted = tiltSensor.isTilted();
+
           Serial.printf("Result: %.2f cm, Fill: %d%%\n", distance, fillPercentage);
 
           JsonDocument doc;
           doc["deviceId"] = DEVICE_ID;
           doc["fillLevel"] = fillPercentage;
+          doc["batteryPercentage"] = batteryLevel;
+          doc["voltage"] = voltage;
+          doc["isTilted"] = isTilted;
 
           char output[256];
           serializeJson(doc, output);

@@ -9,6 +9,9 @@ export const devices = sqliteTable("devices", {
   deployed: integer("deployed", { mode: "boolean" }).default(false),
   lastSeen: integer("last_seen", { mode: "timestamp" }),
   status: text("status").default("offline"),
+  batteryPercentage: real("battery_percentage").default(100),
+  voltage: real("voltage").default(5.0),
+  isTilted: integer("is_tilted", { mode: "boolean" }).default(false),
 });
 
 export const readings = sqliteTable("readings", {
@@ -18,6 +21,8 @@ export const readings = sqliteTable("readings", {
     .references(() => devices.id),
   fillLevel: real("fill_level").notNull(),
   batteryPercentage: real("battery_percentage").notNull(),
+  voltage: real("voltage").default(0),
+  isTilted: integer("is_tilted", { mode: "boolean" }).notNull(),
   createdAt: integer("created_at", { mode: "timestamp" })
     .default(sql`(unixepoch())`)
     .notNull(),

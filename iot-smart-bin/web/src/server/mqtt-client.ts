@@ -11,7 +11,9 @@ import { devices, readings } from "@/db/schema";
 const BinDataSchema = z.object({
   deviceId: z.string(),
   fillLevel: z.number(),
-  batteryPercentage: z.number().optional().default(100),
+  batteryPercentage: z.number(),
+  voltage: z.number(),
+  isTilted: z.boolean(),
 });
 export type BinData = z.infer<typeof BinDataSchema>;
 
@@ -24,6 +26,8 @@ export interface Device {
   isOnline: boolean;
   location: string;
   batteryPercentage: number;
+  voltage: number;
+  isTilted: boolean;
 }
 
 // --- State and Client ---
@@ -43,6 +47,8 @@ const deviceStore: Record<
     lastSeen: number;
     status: string;
     batteryPercentage: number;
+    voltage: number;
+    isTilted: boolean;
   }
 > = {};
 
@@ -117,6 +123,7 @@ const connect = () => {
       const existing = deviceStore[binId] || {
         fillLevel: 0,
         batteryPercentage: 100,
+        voltage: 5.0,
       };
       deviceStore[binId] = {
         ...existing,
@@ -131,12 +138,15 @@ const connect = () => {
         const result = BinDataSchema.safeParse(json);
 
         if (result.success) {
-          const { deviceId, fillLevel, batteryPercentage } = result.data;
+          const { deviceId, fillLevel, batteryPercentage, voltage, isTilted } =
+            result.data;
 
           // Update In-Memory Store
           deviceStore[deviceId] = {
             fillLevel,
             batteryPercentage,
+            voltage,
+            isTilted,
             lastSeen: Date.now(),
             status: "online",
           };
@@ -144,13 +154,21 @@ const connect = () => {
           // Update DB Device Status
           await db
             .update(devices)
-            .set({ status: "online", lastSeen: new Date() })
+            .set({
+              status: "online",
+              lastSeen: new Date(),
+              batteryPercentage: batteryPercentage,
+              voltage: voltage,
+              isTilted: isTilted,
+            })
             .where(eq(devices.id, deviceId));
 
           await db.insert(readings).values({
             deviceId,
             fillLevel,
             batteryPercentage,
+            voltage,
+            isTilted,
             createdAt: new Date(),
           });
         }
@@ -191,6 +209,8 @@ export const getDevices = (): Device[] => {
       isOnline,
       location: "Unknown",
       batteryPercentage: data.batteryPercentage,
+      voltage: data.voltage || 0,
+      isTilted: data.isTilted || false,
     };
   });
 };
