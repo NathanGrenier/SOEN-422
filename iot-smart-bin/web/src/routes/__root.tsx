@@ -6,7 +6,7 @@ import {
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import appCss from "../styles.css?url";
+import "../styles.css";
 import type { QueryClient } from "@tanstack/react-query";
 import { DefaultCatchBoundary } from "@/components/DefaultCatchBoundary";
 import { NotFound } from "@/components/NotFound";
@@ -29,10 +29,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         },
       ],
       links: [
-        {
-          rel: "stylesheet",
-          href: appCss,
-        },
+        ...(import.meta.env.DEV
+          ? [
+              {
+                rel: "stylesheet",
+                href: "/src/styles.css",
+              },
+            ]
+          : []),
         {
           rel: "icon",
           type: "image/svg+xml",
