@@ -69,7 +69,7 @@ function LandingPage() {
               </CardHeader>
               <CardContent className="text-slate-600 dark:text-slate-400">
                 A central dashboard aggregates data to identify overflowing bins
-                (85%+) and optimize collection routes.
+                and optimize collection routes.
               </CardContent>
             </Card>
 
