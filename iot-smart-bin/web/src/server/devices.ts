@@ -43,23 +43,19 @@ export const updateDeviceSettings = createServerFn({ method: "POST" })
     if (data.threshold !== undefined) {
       const client = getMqttClient();
 
-      if (client) {
-        const topic = `bins/${data.id}/config`;
-        const payload = JSON.stringify({ threshold: data.threshold });
+      const topic = `bins/${data.id}/config`;
+      const payload = JSON.stringify({ threshold: data.threshold });
 
-        try {
-          await new Promise<void>((resolve, reject) => {
-            client.publish(topic, payload, { qos: 1, retain: true }, (err) => {
-              if (err) reject(err);
-              else resolve();
-            });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          client.publish(topic, payload, { qos: 1, retain: true }, (err) => {
+            if (err) reject(err);
+            else resolve();
           });
-          console.log(`[MQTT] Successfully sent threshold: ${data.threshold}%`);
-        } catch (err) {
-          console.error(`[MQTT] Publish failed:`, err);
-        }
-      } else {
-        console.warn(`[MQTT] Client not connected. Could not send update.`);
+        });
+        console.log(`[MQTT] Successfully sent threshold: ${data.threshold}%`);
+      } catch (err) {
+        console.error(`[MQTT] Publish failed:`, err);
       }
     }
 
