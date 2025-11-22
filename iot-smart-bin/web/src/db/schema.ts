@@ -28,6 +28,12 @@ export const readings = sqliteTable("readings", {
     .notNull(),
 });
 
+export const systemSettings = sqliteTable("system_settings", {
+  key: text("key").primaryKey(),
+  value: integer("value").notNull(), // Stored in milliseconds
+  description: text("description"),
+});
+
 // --- Better Auth Tables ---
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),

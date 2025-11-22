@@ -15,6 +15,13 @@
       "when": 1763803150212,
       "tag": "0001_confused_sentry",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1763808282254,
+      "tag": "0002_spotty_lethal_legion",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ArduinoJson.h>
+#include <ESP32Servo.h>
 #include <HCSR04.h>
 #include <TiltSensor.h>
 #include "api_config.h"
@@ -42,17 +43,33 @@ const byte TRIGGER_PIN = 17;       // Yellow Wire
 const u16_t MAX_DISTANCE_CM = 400; // Maximum distance to measure (in cm)
 UltraSonicDistanceSensor distanceSensor = UltraSonicDistanceSensor(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE_CM);
 
-const byte TILT_PIN = 13; // White Wire
+const byte TILT_PIN = 12; // White Wire
 // RBS 040100 is Closed when Upright, so we set normallyClosed = true
 TiltSensor tiltSensor(TILT_PIN, true);
 
+// --- Servo Configuration ---
+const byte RED_LED_PIN = 14;    // Blue Wire
+const byte SERVO_DATA_PIN = 13; // Yellow Wire
+const byte SERVO_TIMER_ID = 0;
+const byte SERVO_PERIOD = 50; // in Hz
+// Datasheet for Hitec HS-422: https://media.digikey.com/pdf/data%20sheets/dfrobot%20pdfs/ser0002_web.pdf
+const u16_t SERVO_MIN = 900;
+const u16_t SERVO_MAX = 2100;
+
+const u16_t SERVO_BIN_CLOSED_POS = 0; // Degrees
+const u16_t SERVO_BIN_OPEN_POS = 90;  // Degrees
+
+Servo servo;
+
 // --- Bin Configuration ---
+int threshold = 85;                     // Default value, overwritten by MQTT
 const float BIN_HEIGHT_CM = BIN_HEIGHT; // The total depth of the bin
 const float MIN_VALID_CM = 2.0;         // Sensor blind spot
+int lastValidFillLevel = 0;
 
 // --- Timing & State Machine Variables ---
 unsigned long lastCycleTime = 0;
-const long CYCLE_INTERVAL = 15 * 1000; // Time between sampling bursts in milliseconds
+const long CYCLE_INTERVAL = 10 * 1000; // Time between sampling bursts in milliseconds
 
 // Sampling State Machine
 bool isSampling = false;
@@ -60,6 +77,9 @@ unsigned long lastSampleTime = 0; // Tracks the 60ms gap
 const long SAMPLE_INTERVAL = 60;  // Time between individual pings
 const int TARGET_SAMPLES = 11;
 std::vector<float> currentReadings;
+
+// Tilt Recovery Logic
+bool wasTilted = false;
 
 // --- MQTT Client Setup ---
 #if defined(PRODUCTION_BUILD)
@@ -79,6 +99,7 @@ MQTTPubSubClient mqtt;
 
 // --- Forward Declarations ---
 void triggerSampling();
+void openBin();
 
 void enterDeepSleep(uint64_t time_ms)
 {
@@ -128,6 +149,28 @@ void setupMqttSubscriptions()
                  {
         Serial.println("!!! FORCING SAMPLE !!!");
         triggerSampling(); });
+
+  mqtt.subscribe(MQTT::Topics::getConfig(DEVICE_ID), [](const String &payload, const size_t size)
+                 {
+    Serial.printf("Received config update: %s\n", payload.c_str());
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, payload);
+    if (!error) {
+        if (doc["threshold"].is<int>()) {
+            threshold = doc["threshold"];
+            Serial.printf("New Threshold Set: %d%%\n", threshold);
+            // Trigger a sample immediately to apply new threshold logic
+            triggerSampling();
+        }
+    } else {
+        Serial.println("Failed to parse config JSON");
+    } });
+}
+
+void requestThreshold()
+{
+  Serial.println("Requesting threshold from server...");
+  mqtt.publish(MQTT::Topics::requestConfig(DEVICE_ID), "{}");
 }
 
 void connectToMqtt()
@@ -161,6 +204,7 @@ void connectToMqtt()
     Serial.println(" MQTT Connected!");
     setupMqttSubscriptions();
     mqtt.publish(statusTopic, "online", true, 0); // Announce we are Online immediately
+    requestThreshold();
   }
   else
   {
@@ -185,6 +229,16 @@ void setup()
   clientId = String(DEVICE_ID) + String(ENV_SUFFIX);
   Serial.printf("Device Configured: %s\n", clientId.c_str());
 
+  // --- LED Setup ---
+  pinMode(RED_LED_PIN, OUTPUT);
+  digitalWrite(RED_LED_PIN, LOW); // Start Off
+
+  // --- Servo Setup ---
+  ESP32PWM::allocateTimer(SERVO_TIMER_ID);
+  servo.setPeriodHertz(SERVO_PERIOD);
+  servo.attach(SERVO_DATA_PIN, SERVO_MIN, SERVO_MAX);
+
+  // --- Tilt Sensor Setup ---
   tiltSensor.begin();
 
   connectToWifi();
@@ -215,8 +269,25 @@ void setup()
       delay(3000);
   }
 
+  // Ensure bin is opened at startup by default
+  openBin();
+
   Serial.println("Heap Memory After Setup:");
   Serial.printf("Free Heap: %u bytes, Max Contiguous Block: %u bytes\n", esp_get_free_heap_size(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+}
+
+void openBin()
+{
+  Serial.println("[ACTUATOR] Opening bin (Under Threshold)");
+  digitalWrite(RED_LED_PIN, LOW);
+  servo.write(SERVO_BIN_OPEN_POS);
+}
+
+void closeBin()
+{
+  Serial.println("[ACTUATOR] Closing bin (Over Threshold)");
+  digitalWrite(RED_LED_PIN, HIGH);
+  servo.write(SERVO_BIN_CLOSED_POS);
 }
 
 /**
@@ -279,6 +350,43 @@ void loop()
 
   unsigned long now = millis();
 
+  // --- TILT LOGIC ---
+  if (tiltSensor.isTilted())
+  {
+    if (!wasTilted)
+    {
+      Serial.println("[TILT] Bin tilted! Pausing sampling.");
+      wasTilted = true;
+      // Abort current sampling if active
+      isSampling = false;
+
+      JsonDocument doc;
+      doc["deviceId"] = DEVICE_ID;
+      // We send -1 for fillLevel to indicate it is currently invalid/unknown
+      doc["fillLevel"] = lastValidFillLevel;
+      doc["batteryPercentage"] = 100;
+      doc["voltage"] = 5.0;
+      doc["isTilted"] = true;
+
+      char output[256];
+      serializeJson(doc, output);
+      mqtt.publish(MQTT::Topics::getData(DEVICE_ID), output);
+      Serial.print("Published Tilt Alert: ");
+      Serial.println(output);
+    }
+    delay(1000);
+    return; // Skip the rest of the loop while tilted
+  }
+
+  // --- RECOVERY LOGIC ---
+  if (wasTilted && !tiltSensor.isTilted())
+  {
+    Serial.println("[TILT] Bin upright. Triggering fast recovery sample in 2s.");
+    wasTilted = false;
+    lastCycleTime = now - CYCLE_INTERVAL + (2 * 1000);
+  }
+
+  // --- SAMPLING LOGIC ---
   if (!isSampling && (now - lastCycleTime > CYCLE_INTERVAL))
   {
     triggerSampling();
@@ -290,40 +398,46 @@ void loop()
     {
       lastSampleTime = now;
 
-      // Note: measureDistanceCm() blocks for ~20ms max (hardware limitation of pulseIn)
       float val = distanceSensor.measureDistanceCm();
-
       if (val > MIN_VALID_CM && val <= BIN_HEIGHT_CM)
       {
         currentReadings.push_back(val);
       }
 
-      // Check if we have collected enough samples (attempted TARGET_SAMPLES times)
       static int attempts = 0;
       attempts++;
 
       if (attempts >= TARGET_SAMPLES)
       {
-        // Burst Complete
         isSampling = false;
         attempts = 0;
 
         Serial.printf("Collected %d valid samples.\n", currentReadings.size());
-
         float distance = processReadings(currentReadings);
 
         if (distance > 0)
         {
           int fillPercentage = map((long)distance, 0, (long)BIN_HEIGHT_CM, 100, 0);
           fillPercentage = constrain(fillPercentage, 0, 100);
+          lastValidFillLevel = fillPercentage;
 
-          // Hardcoded values since battery power not implemented
+          Serial.printf("Fill: %d%% | Threshold: %d%%\n", fillPercentage, threshold);
+
+          // --- ACTUATION LOGIC ---
+          const int DEADZONE = 1; // 11 buffer
+
+          if (fillPercentage > threshold)
+          {
+            closeBin();
+          }
+          else if (fillPercentage < (threshold - DEADZONE))
+          {
+            openBin();
+          }
+
           int batteryLevel = 100;
           float voltage = 5.0;
-
-          bool isTilted = tiltSensor.isTilted();
-
-          Serial.printf("Result: %.2f cm, Fill: %d%%\n", distance, fillPercentage);
+          bool isTilted = false; // We know it's false because we skip loop if true
 
           JsonDocument doc;
           doc["deviceId"] = DEVICE_ID;
@@ -334,22 +448,17 @@ void loop()
 
           char output[256];
           serializeJson(doc, output);
-
           mqtt.publish(MQTT::Topics::getData(DEVICE_ID), output);
-          Serial.print("Published to ");
-          Serial.print(MQTT::Topics::getData(DEVICE_ID));
-          Serial.print(": ");
+          Serial.print("Published: ");
           Serial.println(output);
         }
         else
         {
-          Serial.println("Error: No valid readings in this burst.");
+          Serial.println("Error: No valid readings.");
         }
-
-        // Serial.printf("Free Heap: %u bytes, Max Contiguous Block: %u bytes\n", esp_get_free_heap_size(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
       }
     }
   }
 
-  delay(10); // Trigger Modem Sleep
+  delay(10); // Needed to trigger Modem Sleep
 }

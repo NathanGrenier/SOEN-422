@@ -9,12 +9,18 @@ import {
   getMqttClient,
 } from "./mqtt-client";
 import { db } from "@/db";
-import { devices, readings } from "@/db/schema";
+import { devices, readings, systemSettings } from "@/db/schema";
 
-// --- Dashboard Data ---
 export const getDashboardData = createServerFn({ method: "GET" }).handler(
   async () => {
     getMqttClient();
+
+    const settingsRows = await db.select().from(systemSettings);
+    const getSetting = (key: string, def: number) =>
+      settingsRows.find((s) => s.key === key)?.value ?? def;
+
+    const STANDARD_TIMEOUT = getSetting("TIMEOUT_STANDARD_MS", 900000);
+    const TILTED_TIMEOUT = getSetting("TIMEOUT_TILTED_MS", 300000);
 
     const dbDevices = await db
       .select()
@@ -27,17 +33,6 @@ export const getDashboardData = createServerFn({ method: "GET" }).handler(
       dbDevices.map(async (dbDev) => {
         const live = liveState[dbDev.id];
         const now = Date.now();
-        const TIMEOUT_MS = 30000;
-
-        // Determine if online based on recent live activity
-        // If we have live data, use its timestamp, otherwise use DB timestamp
-        const lastSeenTime = live?.lastSeen ?? dbDev.lastSeen?.getTime() ?? 0;
-        const isTimedOut = now - lastSeenTime > TIMEOUT_MS;
-
-        // Valid if MQTT says online AND it hasn't timed out
-        const isOnline =
-          (live?.status === "online" || dbDev.status === "online") &&
-          !isTimedOut;
 
         let fillLevel = live?.fillLevel;
         let batteryPercentage = live?.batteryPercentage;
@@ -74,6 +69,15 @@ export const getDashboardData = createServerFn({ method: "GET" }).handler(
         if (voltage === undefined) voltage = dbDev.voltage ?? 5.0;
         if (isTilted === undefined) isTilted = dbDev.isTilted ?? false;
 
+        const TIMEOUT_MS = isTilted ? TILTED_TIMEOUT : STANDARD_TIMEOUT;
+
+        const lastSeenTime = live?.lastSeen ?? dbDev.lastSeen?.getTime() ?? 0;
+        const isTimedOut = now - lastSeenTime > TIMEOUT_MS;
+
+        const isOnline =
+          (live?.status === "online" || dbDev.status === "online") &&
+          !isTimedOut;
+
         return {
           id: dbDev.id,
           name: dbDev.name ?? dbDev.id,
@@ -98,29 +102,6 @@ export const getDashboardData = createServerFn({ method: "GET" }).handler(
     };
   },
 );
-
-// --- Device Management ---
-export const updateDeviceSettings = createServerFn({ method: "POST" })
-  .inputValidator(
-    z.object({
-      id: z.string(),
-      location: z.string().optional(),
-      threshold: z.number().optional(),
-      deployed: z.boolean().optional(),
-    }),
-  )
-  .handler(async ({ data }) => {
-    await db
-      .update(devices)
-      .set({
-        ...(data.location !== undefined && { location: data.location }),
-        ...(data.threshold !== undefined && { threshold: data.threshold }),
-        ...(data.deployed !== undefined && { deployed: data.deployed }),
-      })
-      .where(eq(devices.id, data.id));
-
-    return { success: true };
-  });
 
 export const pingDevice = createServerFn({ method: "POST" })
   .inputValidator(z.object({ id: z.string() }))

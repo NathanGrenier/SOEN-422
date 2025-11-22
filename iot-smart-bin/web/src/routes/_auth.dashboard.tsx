@@ -10,7 +10,6 @@ import {
   RotateCw,
   Wifi,
   WifiOff,
-  Zap,
 } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -24,7 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getDashboardData, pingDevice } from "@/server/mqtt";
+import { getDashboardData, pingDevice } from "@/server/dashboard";
 
 export const Route = createFileRoute("/_auth/dashboard")({
   component: Dashboard,

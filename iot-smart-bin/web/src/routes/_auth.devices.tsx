@@ -1,15 +1,120 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Loader2, Save } from "lucide-react";
+import { useEffect, useState } from "react";
 import { createColumns } from "./devices/-components/columns";
 import { DataTable } from "./devices/-components/data-table";
-import { updateDeviceSettings } from "@/server/mqtt";
+import {
+  clearDeviceReadings,
+  getAllDevices,
+  updateDeviceSettings,
+} from "@/server/devices";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { clearDeviceReadings, getAllDevices } from "@/server/devices";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { getSystemSettings, updateSystemSettings } from "@/server/settings";
 
 export const Route = createFileRoute("/_auth/devices")({
   component: DevicesPage,
 });
+
+function TimeoutSettings() {
+  const queryClient = useQueryClient();
+  const [stdSeconds, setStdSeconds] = useState<string>("30");
+  const [tiltedSeconds, setTiltedSeconds] = useState<string>("300");
+
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ["system-settings"],
+    queryFn: () => getSystemSettings(),
+  });
+
+  // Sync local state when data arrives
+  useEffect(() => {
+    if (settings) {
+      setStdSeconds((settings.standardTimeout / 1000).toString());
+      setTiltedSeconds((settings.tiltedTimeout / 1000).toString());
+    }
+  }, [settings]);
+
+  const mutation = useMutation({
+    mutationFn: (data: { standardTimeout: number; tiltedTimeout: number }) =>
+      updateSystemSettings({ data }),
+    onSuccess: () => {
+      toast.success("Timeout settings updated");
+      queryClient.invalidateQueries({ queryKey: ["system-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-data"] }); // Refresh dashboard status immediately
+    },
+    onError: () => toast.error("Failed to update settings"),
+  });
+
+  const handleSave = () => {
+    const std = parseInt(stdSeconds) * 1000;
+    const tilted = parseInt(tiltedSeconds) * 1000;
+
+    if (isNaN(std) || isNaN(tilted)) {
+      toast.error("Please enter valid numbers");
+      return;
+    }
+
+    mutation.mutate({ standardTimeout: std, tiltedTimeout: tilted });
+  };
+
+  if (isLoading) return null;
+
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle className="text-lg font-medium">
+          Connectivity Thresholds
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+          <div className="space-y-2">
+            <Label htmlFor="std-timeout">Standard Timeout (Seconds)</Label>
+            <Input
+              id="std-timeout"
+              type="number"
+              value={stdSeconds}
+              onChange={(e) => setStdSeconds(e.target.value)}
+              placeholder="30"
+            />
+            <p className="text-xs text-slate-500">
+              Time before an upright bin is marked offline.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="tilted-timeout">Tilted Timeout (Seconds)</Label>
+            <Input
+              id="tilted-timeout"
+              type="number"
+              value={tiltedSeconds}
+              onChange={(e) => setTiltedSeconds(e.target.value)}
+              placeholder="300"
+            />
+            <p className="text-xs text-slate-500">
+              Extended time allowed for bins being emptied.
+            </p>
+          </div>
+          <Button
+            onClick={handleSave}
+            disabled={mutation.isPending}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            {mutation.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 h-4 w-4" />
+            )}
+            Save Settings
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function DevicesPage() {
   const queryClient = useQueryClient();
@@ -68,6 +173,8 @@ function DevicesPage() {
           Click on Location or Threshold cells to edit them.
         </p>
       </div>
+
+      <TimeoutSettings />
 
       <Card>
         <CardHeader>

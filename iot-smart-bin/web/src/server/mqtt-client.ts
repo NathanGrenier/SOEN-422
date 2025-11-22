@@ -7,6 +7,12 @@ import { env } from "@/env";
 import { db } from "@/db"; // Import DB
 import { devices, readings } from "@/db/schema";
 
+const SUBSCRIPTION_TOPICS = [
+  "bins/+/data",
+  "bins/+/status",
+  "bins/+/get-config",
+];
+
 // --- Types ---
 const BinDataSchema = z.object({
   deviceId: z.string(),
@@ -31,7 +37,7 @@ export interface Device {
 }
 
 // --- State and Client ---
-let client: MqttClient | null = null;
+const globalMqtt = globalThis as unknown as { mqttClient?: MqttClient };
 let brokerConnectionStatus:
   | "Connected"
   | "Disconnected"
@@ -53,8 +59,11 @@ const deviceStore: Record<
 > = {};
 
 const connect = () => {
-  if (client && (client.connected || client.reconnecting)) {
-    return client;
+  if (
+    globalMqtt.mqttClient &&
+    (globalMqtt.mqttClient.connected || globalMqtt.mqttClient.reconnecting)
+  ) {
+    return globalMqtt.mqttClient;
   }
   console.log("Attempting to connect to MQTT broker...");
   brokerConnectionStatus = "Connecting";
@@ -65,14 +74,14 @@ const connect = () => {
     reconnectPeriod: 1000,
   };
 
-  client = mqtt.connect(env.MQTT_BROKER_URL, options);
+  const client = mqtt.connect(env.MQTT_BROKER_URL, options);
 
   client.on("connect", () => {
     brokerConnectionStatus = "Connected";
     console.log("MQTT Broker Connected");
-    client?.subscribe(["bins/+/data", "bins/+/status"], (err) => {
+    client?.subscribe(SUBSCRIPTION_TOPICS, (err) => {
       if (err) console.error("Subscription failed:", err);
-      else console.log("Subscribed to bins/+/data and bins/+/status");
+      else console.log("Subscribed to topics:", SUBSCRIPTION_TOPICS);
     });
   });
 
@@ -116,101 +125,120 @@ const connect = () => {
       console.error("DB Error creating device:", e);
     }
 
-    if (type === "status") {
-      const status = msgString === "online" ? "online" : "offline";
+    switch (type) {
+      case "status": {
+        const status = msgString === "online" ? "online" : "offline";
 
-      // Update In-Memory Store
-      const existing = deviceStore[binId] || {
-        fillLevel: 0,
-        batteryPercentage: 100,
-        voltage: 5.0,
-      };
-      deviceStore[binId] = {
-        ...existing,
-        status,
-        lastSeen: Date.now(),
-      };
+        // Update In-Memory Store
+        const existing = deviceStore[binId] || {
+          fillLevel: 0,
+          batteryPercentage: 100,
+          voltage: 5.0,
+        };
+        deviceStore[binId] = {
+          ...existing,
+          status,
+          lastSeen: Date.now(),
+        };
 
-      await db.update(devices).set({ status }).where(eq(devices.id, binId));
-    } else if (type === "data") {
-      try {
-        const json = JSON.parse(msgString);
-        const result = BinDataSchema.safeParse(json);
+        await db.update(devices).set({ status }).where(eq(devices.id, binId));
+        break;
+      }
 
-        if (result.success) {
-          const { deviceId, fillLevel, batteryPercentage, voltage, isTilted } =
-            result.data;
+      case "data": {
+        try {
+          const json = JSON.parse(msgString);
+          const result = BinDataSchema.safeParse(json);
 
-          // Update In-Memory Store
-          deviceStore[deviceId] = {
-            fillLevel,
-            batteryPercentage,
-            voltage,
-            isTilted,
-            lastSeen: Date.now(),
-            status: "online",
-          };
+          if (result.success) {
+            const {
+              deviceId,
+              fillLevel,
+              batteryPercentage,
+              voltage,
+              isTilted,
+            } = result.data;
 
-          // Update DB Device Status
-          await db
-            .update(devices)
-            .set({
+            // Update In-Memory Store
+            deviceStore[deviceId] = {
+              fillLevel,
+              batteryPercentage,
+              voltage,
+              isTilted,
+              lastSeen: Date.now(),
               status: "online",
-              lastSeen: new Date(),
-              batteryPercentage: batteryPercentage,
-              voltage: voltage,
-              isTilted: isTilted,
-            })
-            .where(eq(devices.id, deviceId));
+            };
 
-          await db.insert(readings).values({
-            deviceId,
-            fillLevel,
-            batteryPercentage,
-            voltage,
-            isTilted,
-            createdAt: new Date(),
-          });
+            // Update DB Device Status
+            await db
+              .update(devices)
+              .set({
+                status: "online",
+                lastSeen: new Date(),
+                batteryPercentage: batteryPercentage,
+                voltage: voltage,
+                isTilted: isTilted,
+              })
+              .where(eq(devices.id, deviceId));
+
+            await db.insert(readings).values({
+              deviceId,
+              fillLevel,
+              batteryPercentage,
+              voltage,
+              isTilted,
+              createdAt: new Date(),
+            });
+          }
+        } catch (e) {
+          console.error("Failed to parse JSON or DB error:", e);
         }
-      } catch (e) {
-        console.error("Failed to parse JSON or DB error:", e);
+        break;
+      }
+
+      case "get-config": {
+        console.log(`[Config] Request received for device: ${binId}`);
+        try {
+          const deviceRecord = await db
+            .select({ threshold: devices.threshold })
+            .from(devices)
+            .where(eq(devices.id, binId))
+            .limit(1);
+
+          const threshold =
+            deviceRecord.length > 0 ? deviceRecord[0].threshold : 85;
+
+          const responsePayload = JSON.stringify({ threshold });
+          const responseTopic = `bins/${binId}/config`;
+
+          if (client) {
+            client.publish(responseTopic, responsePayload, { retain: false });
+            console.log(`[Config] Sent to ${binId}: ${responsePayload}`);
+          }
+        } catch (e) {
+          console.error(`[Config] Error handling request for ${binId}:`, e);
+        }
+        break;
+      }
+
+      default: {
+        console.warn(`Received message on unknown topic type: ${type}`);
+        break;
       }
     }
   });
 
+  globalMqtt.mqttClient = client;
   return client;
 };
 
 export const getMqttClient = () => {
-  if (!client) {
-    connect();
+  if (!globalMqtt.mqttClient) {
+    return connect();
   }
-  return client;
+  return globalMqtt.mqttClient;
 };
 
 export const getBrokerStatus = () => brokerConnectionStatus;
 
 export const getLiveDeviceState = () => deviceStore;
-
-export const getDevices = (): Device[] => {
-  const now = Date.now();
-  const TIMEOUT_MS = 30000;
-
-  return Object.entries(deviceStore).map(([id, data]) => {
-    const isTimedOut = now - data.lastSeen > TIMEOUT_MS;
-    const isOnline = data.status === "online" && !isTimedOut;
-
-    return {
-      id,
-      fillLevel: data.fillLevel,
-      threshold: 85,
-      lastSeen: data.lastSeen,
-      status: data.status as "online" | "offline",
-      isOnline,
-      location: "Unknown",
-      batteryPercentage: data.batteryPercentage,
-      voltage: data.voltage || 0,
-      isTilted: data.isTilted || false,
-    };
-  });
-};
