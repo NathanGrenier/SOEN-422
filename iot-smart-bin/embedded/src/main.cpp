@@ -17,6 +17,7 @@
 #define WIFI_PASSWORD "DUMMY_PASSWORD"
 #define BIN_ID "CI_BIN"
 #define BIN_HEIGHT 100
+#define BATTERY_VOLTAGE_CALIBRATION 0.0
 
 #define MQTT_BROKER_URL "ci.dummy.prod"
 #define MQTT_BROKER_PORT 443
@@ -67,6 +68,9 @@ const float BIN_HEIGHT_CM = BIN_HEIGHT; // The total depth of the bin
 const float MIN_VALID_CM = 2.0;         // Sensor blind spot
 int lastValidFillLevel = 0;
 
+// --- Battery Configuration ---
+const int BATTERY_PIN = 35;
+const float VOLTAGE_CALIBRATION = BATTERY_VOLTAGE_CALIBRATION;
 // --- Timing & State Machine Variables ---
 unsigned long lastCycleTime = 0;
 const long CYCLE_INTERVAL = 10 * 1000; // Time between sampling bursts in milliseconds
@@ -229,6 +233,8 @@ void setup()
   clientId = String(DEVICE_ID) + String(ENV_SUFFIX);
   Serial.printf("Device Configured: %s\n", clientId.c_str());
 
+  analogReadResolution(12);
+
   // --- LED Setup ---
   pinMode(RED_LED_PIN, OUTPUT);
   digitalWrite(RED_LED_PIN, LOW); // Start Off
@@ -240,6 +246,9 @@ void setup()
 
   // --- Tilt Sensor Setup ---
   tiltSensor.begin();
+
+  // --- Battery Pin Setup ---
+  pinMode(BATTERY_PIN, INPUT);
 
   connectToWifi();
 
@@ -332,6 +341,71 @@ void triggerSampling()
   }
 }
 
+struct BatteryMap
+{
+  float voltage;
+  int percentage;
+};
+
+// Data points derived specifically from Samsung 25R Datasheet (Page 6, 1C Curve)
+// Samsung INR18650-25R Datasheet: https://www.powerstream.com/p/INR18650-25R-datasheet.pdf
+const BatteryMap BATTERY_CURVE[] = {
+    {4.20, 100},
+    {3.88, 80},
+    {3.70, 60},
+    {3.60, 50},
+    {3.53, 40},
+    {3.4, 20},
+    {3.27, 10},
+    {3.10, 0}};
+const int TABLE_SIZE = sizeof(BATTERY_CURVE) / sizeof(BATTERY_CURVE[0]);
+
+/**
+ * Calculates a precise battery percentage using Linear Interpolation
+ * based on the Samsung 25R datasheet.
+ */
+int getBatteryPercentage(float voltage)
+{
+  // Handle edge cases (Overcharged or Empty)
+  if (voltage >= BATTERY_CURVE[0].voltage)
+    return 100;
+  if (voltage <= BATTERY_CURVE[TABLE_SIZE - 1].voltage)
+    return 0;
+
+  for (int i = 0; i < TABLE_SIZE - 1; i++)
+  {
+    float upperV = BATTERY_CURVE[i].voltage;
+    float lowerV = BATTERY_CURVE[i + 1].voltage;
+
+    if (voltage <= upperV && voltage > lowerV)
+    {
+      int upperP = BATTERY_CURVE[i].percentage;
+      int lowerP = BATTERY_CURVE[i + 1].percentage;
+
+      float progress = (voltage - lowerV) / (upperV - lowerV);
+
+      return lowerP + (progress * (upperP - lowerP));
+    }
+  }
+
+  // Should not reach here
+  return 0;
+}
+
+/**
+ * Reads the analog pin and converts to battery voltage
+ */
+float readBatteryVoltage()
+{
+  uint32_t raw = analogRead(BATTERY_PIN);
+
+  // Formula: (ADC / Max_ADC) * Ref_Voltage * Divider_Factor
+  // The divider cuts voltage in half, so we multiply by 2.
+  float voltage = (raw / 4095.0) * 3.3 * 2.0;
+
+  return voltage + VOLTAGE_CALIBRATION;
+}
+
 void loop()
 {
   if (WiFi.status() != WL_CONNECTED)
@@ -360,12 +434,15 @@ void loop()
       // Abort current sampling if active
       isSampling = false;
 
+      float voltage = readBatteryVoltage();
+      int batteryLevel = getBatteryPercentage(voltage);
+
       JsonDocument doc;
       doc["deviceId"] = DEVICE_ID;
       // We send -1 for fillLevel to indicate it is currently invalid/unknown
       doc["fillLevel"] = lastValidFillLevel;
-      doc["batteryPercentage"] = 100;
-      doc["voltage"] = 5.0;
+      doc["batteryPercentage"] = batteryLevel;
+      doc["voltage"] = round(voltage * 100.0) / 100.0;
       doc["isTilted"] = true;
 
       char output[256];
@@ -435,15 +512,15 @@ void loop()
             openBin();
           }
 
-          int batteryLevel = 100;
-          float voltage = 5.0;
+          float voltage = readBatteryVoltage();
+          int batteryLevel = getBatteryPercentage(voltage);
           bool isTilted = false; // We know it's false because we skip loop if true
 
           JsonDocument doc;
           doc["deviceId"] = DEVICE_ID;
           doc["fillLevel"] = fillPercentage;
           doc["batteryPercentage"] = batteryLevel;
-          doc["voltage"] = voltage;
+          doc["voltage"] = round(voltage * 100.0) / 100.0; // Round to 2 decimals
           doc["isTilted"] = isTilted;
 
           char output[256];

@@ -124,9 +124,9 @@ export function DeviceDetailSheet() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
-                  <div className="text-3xl font-bold text-foreground">
+                  <div className="text-2xl font-bold text-foreground">
                     {latest?.voltage?.toFixed(2) ?? "--"}
-                    <span className="text-3xl font-normal text-muted-foreground ml-1">
+                    <span className="text-2xl font-normal text-muted-foreground ml-1">
                       V
                     </span>
                   </div>
@@ -140,7 +140,7 @@ export function DeviceDetailSheet() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
-                  <div className="text-xl font-bold text-foreground">
+                  <div className="text-2xl font-bold text-foreground">
                     {latest
                       ? new Date(latest.createdAt).toLocaleTimeString([], {
                           hour: "2-digit",
