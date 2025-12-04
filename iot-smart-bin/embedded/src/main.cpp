@@ -44,13 +44,15 @@ const byte TRIGGER_PIN = 17;       // Yellow Wire
 const u16_t MAX_DISTANCE_CM = 400; // Maximum distance to measure (in cm)
 UltraSonicDistanceSensor distanceSensor = UltraSonicDistanceSensor(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE_CM);
 
-const byte TILT_PIN = 12; // White Wire
+const byte TILT_PIN = 13; // White Wire
 // RBS 040100 is Closed when Upright, so we set normallyClosed = true
 TiltSensor tiltSensor(TILT_PIN, true);
+unsigned long tiltDebounceStartTime = 0;
+const unsigned long TILT_DEBOUNCE_DELAY = 200;
 
 // --- Servo Configuration ---
 const byte RED_LED_PIN = 14;    // Blue Wire
-const byte SERVO_DATA_PIN = 13; // Yellow Wire
+const byte SERVO_DATA_PIN = 12; // Yellow Wire
 const byte SERVO_TIMER_ID = 0;
 const byte SERVO_PERIOD = 50; // in Hz
 // Datasheet for Hitec HS-422: https://media.digikey.com/pdf/data%20sheets/dfrobot%20pdfs/ser0002_web.pdf
@@ -427,32 +429,44 @@ void loop()
   // --- TILT LOGIC ---
   if (tiltSensor.isTilted())
   {
-    if (!wasTilted)
+    if (tiltDebounceStartTime == 0)
     {
-      Serial.println("[TILT] Bin tilted! Pausing sampling.");
-      wasTilted = true;
-      // Abort current sampling if active
-      isSampling = false;
-
-      float voltage = readBatteryVoltage();
-      int batteryLevel = getBatteryPercentage(voltage);
-
-      JsonDocument doc;
-      doc["deviceId"] = DEVICE_ID;
-      // We send -1 for fillLevel to indicate it is currently invalid/unknown
-      doc["fillLevel"] = lastValidFillLevel;
-      doc["batteryPercentage"] = batteryLevel;
-      doc["voltage"] = round(voltage * 100.0) / 100.0;
-      doc["isTilted"] = true;
-
-      char output[256];
-      serializeJson(doc, output);
-      mqtt.publish(MQTT::Topics::getData(DEVICE_ID), output);
-      Serial.print("Published Tilt Alert: ");
-      Serial.println(output);
+      tiltDebounceStartTime = now;
     }
-    delay(1000);
-    return; // Skip the rest of the loop while tilted
+
+    else if (now - tiltDebounceStartTime > TILT_DEBOUNCE_DELAY)
+    {
+      if (!wasTilted)
+      {
+        Serial.println("[TILT] Bin tilted (Confirmed)! Pausing sampling.");
+        wasTilted = true;
+        isSampling = false;
+
+        float voltage = readBatteryVoltage();
+        int batteryLevel = getBatteryPercentage(voltage);
+
+        JsonDocument doc;
+        doc["deviceId"] = DEVICE_ID;
+        doc["fillLevel"] = lastValidFillLevel;
+        doc["batteryPercentage"] = batteryLevel;
+        doc["voltage"] = round(voltage * 100.0) / 100.0;
+        doc["isTilted"] = true;
+
+        char output[256];
+        serializeJson(doc, output);
+        mqtt.publish(MQTT::Topics::getData(DEVICE_ID), output);
+        Serial.print("Published Tilt Alert: ");
+        Serial.println(output);
+      }
+
+      // While effectively tilted, we reset the loop to avoid sampling
+      delay(100);
+      return;
+    }
+  }
+  else
+  {
+    tiltDebounceStartTime = 0;
   }
 
   // --- RECOVERY LOGIC ---
