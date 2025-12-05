@@ -7,9 +7,8 @@
 **Quick Links:** 
 - [Live Demo Video]()
 - [Project Presentation Slides](https://liveconcordia-my.sharepoint.com/:p:/g/personal/na_greni_live_concordia_ca/IQCI7jE1QCS0Q5j33NtqWKxFASTevuJy1LxLtF4jdW9WwDI?e=jMpBzi)
-    > [!NOTE] 
-    > You need a `concordia` university email to access this link.
-
+> [!NOTE]
+> You need a `concordia` university email to access this link.
 ## 📖 Project Overview
 
 The IoT Smart Bin is a full-stack waste management solution designed to optimize collection routes and monitor fill levels in real-time. This system addresses inefficiencies in traditional waste collection by providing data-driven insights to campus management.
@@ -73,5 +72,6 @@ Follow these instructions to get a local copy of the project up and running for 
 Follow the [README guide](/iot-smart-bin/embedded/README.md) in the `embedded/` folder.
 
 ### Web Application
+
 
 Follow the [README guide](/iot-smart-bin/web/README.md) in the `web/` folder.
