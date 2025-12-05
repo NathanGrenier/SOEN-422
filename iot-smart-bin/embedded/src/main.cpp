@@ -18,6 +18,7 @@
 #define BIN_ID "CI_BIN"
 #define BIN_HEIGHT 100
 #define BATTERY_VOLTAGE_CALIBRATION 0.0
+#define CYCLE_INTERVAL_MS 10000
 
 #define MQTT_BROKER_URL "ci.dummy.prod"
 #define MQTT_BROKER_PORT 443
@@ -75,7 +76,7 @@ const int BATTERY_PIN = 35;
 const float VOLTAGE_CALIBRATION = BATTERY_VOLTAGE_CALIBRATION;
 // --- Timing & State Machine Variables ---
 unsigned long lastCycleTime = 0;
-const long CYCLE_INTERVAL = 10 * 1000; // Time between sampling bursts in milliseconds
+const long CYCLE_INTERVAL = CYCLE_INTERVAL_MS;
 
 // Sampling State Machine
 bool isSampling = false;
