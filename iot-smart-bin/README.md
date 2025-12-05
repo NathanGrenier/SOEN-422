@@ -5,7 +5,7 @@
  | [![Web CI & Deploy](https://github.com/NathanGrenier/SOEN-422/actions/workflows/web_ci.yaml/badge.svg)](https://github.com/NathanGrenier/SOEN-422/actions/workflows/web_ci.yaml) | [![Embedded CI](https://github.com/NathanGrenier/SOEN-422/actions/workflows/embedded_ci.yaml/badge.svg?branch=main)](https://github.com/NathanGrenier/SOEN-422/actions/workflows/embedded_ci.yaml) |
 
 **Quick Links:** 
-- [Live Demo Video]()
+- [Live Demo Video](https://mega.nz/file/49EwQSzS#SdfCxAAzIKuOfKRjuLCgMbdcfMuU48CZEHR82qWu6-o)
 - [Project Presentation Slides](https://liveconcordia-my.sharepoint.com/:p:/g/personal/na_greni_live_concordia_ca/IQCI7jE1QCS0Q5j33NtqWKxFASTevuJy1LxLtF4jdW9WwDI?e=jMpBzi)
 > [!NOTE]
 > You need a `concordia` university email to access this link.
@@ -75,3 +75,4 @@ Follow the [README guide](/iot-smart-bin/embedded/README.md) in the `embedded/` 
 
 
 Follow the [README guide](/iot-smart-bin/web/README.md) in the `web/` folder.
+
