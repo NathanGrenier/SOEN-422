@@ -19,9 +19,9 @@ services:
     volumes:
       - ../files/db:/app/db
     networks:
-      - app_network
-    ports:
-      - "3010:3010"
+      - dokploy-network
+    expose:
+      - "3010"
 
   mosquitto:
     image: eclipse-mosquitto:latest
@@ -33,11 +33,12 @@ services:
       - ../files/mosquitto/data:/mosquitto/data
       - ../files/mosquitto/log:/mosquitto/log
     networks:
-      - app_network
+      - dokploy-network
+    expose:
+      - "9001"
     ports:
       - "1883:1883"
-      - "9001:9001"
 
 networks:
-  app_network:
-    driver: bridge
+  dokploy-network:
+    external: true
