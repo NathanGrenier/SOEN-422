@@ -124,3 +124,7 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.REPO }}:latest
           no-cache: true
+
+      - name: Trigger Dokploy Redeploy
+        run: |
+          curl -X POST "${{ secrets.DOKPLOY_WEBHOOK_URL }}"
