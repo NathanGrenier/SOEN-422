@@ -20,8 +20,8 @@ services:
       - ../files/db:/app/db
     networks:
       - app_network
-    expose:
-      - "3010"
+    ports:
+      - "3010:3010"
 
   mosquitto:
     image: eclipse-mosquitto:latest
@@ -36,8 +36,7 @@ services:
       - app_network
     ports:
       - "1883:1883"
-    expose:
-      - "9001"
+      - "9001:9001"
 
 networks:
   app_network:
