@@ -40,7 +40,7 @@ RUN chmod +x docker-entrypoint.sh
 
 ENV NODE_ENV=production
 
-EXPOSE 3000
+EXPOSE 3010
 
 # Use the entrypoint script to start the container
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

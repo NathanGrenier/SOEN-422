@@ -1,55 +1,43 @@
+# Dokploy Docker Compose file for production deployment
 services:
   web:
     image: ghcr.io/nathangrenier/soen-422:latest
     container_name: iot-smart-bin-web
     restart: unless-stopped
-    env_file:
-      - .env.production
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${PORT}
+      - DATABASE_URL=${DATABASE_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - MQTT_BROKER_URL=${MQTT_BROKER_URL}
+      - MQTT_USERNAME=${MQTT_USERNAME}
+      - MQTT_PASSWORD=${MQTT_PASSWORD}
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
     volumes:
-      - ./db:/app/db
+      - ../files/db:/app/db
     networks:
       - app_network
-    ports:
-      - "3000:3000"
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+    expose:
+      - "3010"
 
   mosquitto:
     image: eclipse-mosquitto:latest
     container_name: mosquitto
     restart: unless-stopped
     volumes:
-      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - ./mosquitto/config/passwd:/mosquitto/config/passwd
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
+      - ../files/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ../files/mosquitto/config/passwd:/mosquitto/config/passwd:ro
+      - ../files/mosquitto/data:/mosquitto/data
+      - ../files/mosquitto/log:/mosquitto/log
     networks:
       - app_network
     ports:
-      # WebSocket Port
-      - "9001:9001"
-      # Standard MQTT port for local testing
       - "1883:1883"
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-
-  watchtower:
-    image: containrrr/watchtower:latest
-    container_name: watchtower
-    restart: unless-stopped
-    command:
-      - "--label-enable"
-      - "--interval"
-      - "120"
-      - "--rolling-restart"
-      - "--cleanup"
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
-      - "/home/nathan/.docker/config.json:/config.json"
-    networks:
-      - app_network
-    labels:
-      - "com.centurylinklabs.watchtower.enable=false"
+    expose:
+      - "9001"
 
 networks:
   app_network:

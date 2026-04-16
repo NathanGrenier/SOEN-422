@@ -7,7 +7,7 @@ To run this application:
 3. Run the Database (using Docker): `docker-compose up -d`
 4. Run database migrations: `npm run db:push`
 5. Start the Server: `npm run dev`
-6. Access the Application: Open your browser and go to http://localhost:3000 (or your configured port).
+6. Access the Application: Open your browser and go to http://localhost:3010 (or your configured port).
 
 ## Building For Production
 
